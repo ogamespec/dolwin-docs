@@ -2,14 +2,16 @@
 
 All previous documents considered the DSP core inseparably from its hardware connection (Mailbox, Accelerator). This document concentrates specifically on the DSP processor part, without specifying which DSP core interrupts are involved, for example, for the Accelerator, or how hardware registers are mapped to the DSP core memory.
 
+Before reading this document, keep in mind that all DSP designers and programmers have a special alien mindset. They save on everything (on bits, on parallel execution of instructions etc). This can be easily traced by visiting any forum where they live. As a result, the software model for working with DSP has maximum entropy and looks very complicated to understand. But when all knowledge is formalized in the head, everything looks quite logical and simple.
+
 ## Registers
 
 |Index|Name|Meaning|
 |---|---|---|
-|0|r0|Auxiliary register 0 (circular addressing)|
-|1|r1|Auxiliary register 1 (circular addressing)|
-|2|r2|Auxiliary register 2 (circular addressing)|
-|3|r3|Auxiliary register 3 (circular addressing)|
+|0|r0|Address register 0 (circular addressing)|
+|1|r1|Address register 1 (circular addressing)|
+|2|r2|Address register 2 (circular addressing)|
+|3|r3|Address register 3 (circular addressing)|
 |4|m0|Modifier value 0 (circular addressing)|
 |5|m1|Modifier value 1 (circular addressing)|
 |6|m2|Modifier value 2 (circular addressing)|
@@ -166,7 +168,7 @@ ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1).
 |repr reg|0000 0000 010r rrrr|-|-|-|-|-|-|Repeat next instruction by register|1|
 |pld d,rn,mn|0000 001d 0001 mmrr|-|-|-|-|-|-|Load from IMEM|3|
 |nop|0000 0000 0000 0000|-|-|-|-|-|-|No operation|1|
-|mr rn,mn|0000 0000 000m mmrr|-|-|-|-|-|-|Modify aux. register (non-parallel)|1|
+|mr rn,mn|0000 0000 000m mmrr|-|-|-|-|-|-|Modify address register (non-parallel)|1|
 |adsi d,si|0000 010d iiii iiii|C1|V1|Z1|N1|E1|U1|Add short immediate|1|
 |adli d,li|0000 001d 0000 0000 iiii iiii iiii iiii|C1|V1|Z1|N1|E1|U1|Add long immediate|2|
 |cmpsi s,si|0000 011s iiii iiii|C2|V2|Z1|N1|E1|U1|Compare short immediate|1|
@@ -283,6 +285,821 @@ Note that instructions starting with 0b0011 (logical operations) take an extra b
 |mv d,s|1xxx xxxx 0001 ddss|-|-|-|-|-|-|Parallel Move (Form 1a)|1|
 |mv d,s|01xx xxxx 0001 ddss|-|-|-|-|-|-|Parallel Move (Form 1b)|1|
 |mv d,s|0011 xxxx x001 ddss|-|-|-|-|-|-|Parallel Move (Form 1c)|1|
-|mr rn,mn|1xxx xxxx 0000 mmrr|-|-|-|-|-|-|Parallel modify aux. register (Form 1a)|1|
-|mr rn,mn|01xx xxxx 0000 mmrr|-|-|-|-|-|-|Parallel modify aux. register (Form 1b)|1|
-|mr rn,mn|0011 xxxx x000 mmrr|-|-|-|-|-|-|Parallel modify aux. register (Form 1c)|1|
+|mr rn,mn|1xxx xxxx 0000 mmrr|-|-|-|-|-|-|Parallel modify address register (Form 1a)|1|
+|mr rn,mn|01xx xxxx 0000 mmrr|-|-|-|-|-|-|Parallel modify address register (Form 1b)|1|
+|mr rn,mn|0011 xxxx x000 mmrr|-|-|-|-|-|-|Parallel modify address register (Form 1c)|1|
+
+## Regular Instructions Operation Notes
+
+These notes look a little incomprehensible, but if you are reading this document and started digging the DSP, they will help you understand the non-obvious points of the execution of DSP instructions.
+
+The description is given in the form of pseudocode and mnemonic schemes.
+
+### jmp
+
+```
+	if (Condition() == true) PC = ta;
+	else PC = PC + 2;
+```
+
+### jmpr
+
+|rr|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+```
+	if (Condition() == true) PC = rn;
+	else PC = PC + 1;
+```
+
+### call
+
+```
+	if (Condition() == true)
+	{
+		PC = ta;
+		pcs <- PC + 2; 	// Push return address on PC Stack
+	}
+	else PC = PC + 2;
+```
+
+### callr
+
+rn parameter is same as jmpr.
+
+```
+	if (Condition() == true)
+	{
+		PC = rn;
+		pcs <- PC + 1; 	// Push return address on PC Stack
+	}
+	else PC = PC + 1;
+```
+
+### rets
+
+```
+	if (Condition() == true)
+	{
+		PC <- pcs; 	// Pops from PC Stack
+	}
+	else PC = PC + 1;
+```
+
+### reti
+
+```
+	if (Condition() == true)
+	{
+		PC <- pcs; 	// Pops from PC Stack
+		PSR <- pss; 	// Pops from PSR Stack
+	}
+	else PC = PC + 1;
+```
+
+### trap
+
+```
+	pcs <- PC + 1; 		// Push return address
+	pss <- PSR; 		// Push PSR
+	PC = 0x0004;	
+```
+
+### wait
+
+Wait until some unmasked interrupt occures. Disconnects the clock generator from the processor core, leaving only the interrupt check circuit active.
+
+### exec
+
+```
+	if (Condition() == true)
+	{
+		PC = PC + 1;	// Execute next single-word instruction
+	}
+	else
+	{
+		PC = PC + 2; 	// Skip next single-word instruction
+	}
+```
+
+### loop
+
+TBD.
+
+### loopr
+
+TBD.
+
+### rep
+
+Repeat `rc` times the next 1-cycle instruction. If rc == 0, then the next instruction is skipped.
+
+To store the number of repeats, the DSP contains an internal repeat register, which is not directly accessible to the programmer.
+
+```
+rep()
+{
+	if (rc != 0)
+	{
+		repeat = rc;
+		PC = PC + 1;
+	}
+	else
+	{
+		PC = PC + 2;		// Skip next 1-cycle instruction
+	}
+}
+
+next_instr()
+{
+	// Execute 1-cycle instruction
+
+	// ... executed
+
+	if (repeat)
+	{
+		repeat = repeat - 1;
+	}
+
+	// If the value of the repeat register is not equal to 0, then instead of the usual PC increment, it is not performed.
+
+	if (repeat != 0)
+	{
+		PC = PC;
+	}
+	else
+	{
+		PC = PC + 1;
+	}
+}
+```
+
+### repr
+
+Same as rep, but repeat count is taken from register.
+
+LOOP and REP instructions can behave quite exotic if you insert control flow instructions (JMP, CALL) there in inconvenient places. Consider that DSP behavior will be unpredictable in this case and it is better not to do so.
+
+### pld
+
+|d|XL=0|XL=1|
+|---|---|---|
+|0|a1|a|
+|1|b1|b|
+
+|mn|r modify|
+|---|---|
+|00|0|
+|01|-1|
+|10|+1|
+|11|+m|
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+```
+	a/b = READ_IMEM(rn);
+	rn = rn + (0,-1,+1,+m)
+```
+
+The index of the modified register `rn` corresponds to the index of the register `mn`. For example, if register r1 is used, it will be modified by register m1.
+
+Modifications are made according to circular addressing rules.
+
+### nop
+
+```
+	PC = PC + 1
+```
+
+### mr (Regular)
+
+|mn|modify|
+|---|---|
+|000|0|
+|001|-1|
+|010|+1|
+|011|-m|
+|100|+m0|
+|101|+m1|
+|110|+m2|
+|111|+m3|
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+Modify rn by modifier.
+
+### adsi
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+Example (`a` accumulator):
+
+```
+[a2] [a1] [a0] = [a2] [a1] [a0] + [sign] [(int16_t)(int8_t)si] [0]
+```
+
+Quads represent parts of a long accumulator. The highest part (a2/b2) is 8 bits wide.
+
+### adli
+
+Example (`a` accumulator):
+
+```
+[a2] [a1] [a0] = [a2] [a1] [a0] + [sign] [(int16_t)li] [0]
+```
+
+### cmpsi
+
+```
+Flags <- [a2] [a1] [a0] - [sign] [(int16_t)(int8_t)si] [0]
+```
+
+### cmpli
+
+```
+Flags <- [a2] [a1] [a0] - [sign] [(int16_t)li] [0]
+```
+
+### lsfi
+
+If si<0 shift a/b right by \~si + 1.
+
+If si>0 shift a/b left by si.
+
+### asfi
+
+If si<0 arithmetic shift a/b right by \~si + 1.  (Extend msb39 while shifting)
+
+If si>0 shift a/b left by si.
+
+### xorli
+
+|d|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+```
+a1/b1 = a1/b1 ^ li
+```
+
+li is not sign-extended.
+
+### anli
+
+```
+a1/b1 = a1/b1 & li
+```
+
+li is not sign-extended.
+
+### orli
+
+```
+a1/b1 = a1/b1 | li
+```
+
+li is not sign-extended.
+
+### norm
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+```
+	if (E != 0)
+	{
+		d = d >> 1; 		// Arithemic (extend sign)
+		rn = rn + 1;
+	}
+	else if ( (~E & U & ~Z) != 0 )
+	{
+		d = d << 1;
+		rn = rn - 1;
+	}
+	else
+	{
+		// Nop
+	}
+```
+
+### div
+
+One step of non-recoverable division. After the operation, the quotient is in a1/b1, the remainder is in a0/b0. The remainder needs to be restored after the operation on your own.
+
+As in many similar processors, division is performed by a series of successive shifts. Usually, for a complete division of s40 / s16, a large procedure is implemented that monitors the number of shifts and remainders.
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|s|Register|
+|---|---|
+|00|x0|
+|01|y0|
+|10|x1|
+|11|y1|
+
+```
+	if ((d39 ^ s15) == 0) 		// Same sign
+	{
+		temp = (d - s); 	// Get CarryOut
+		d = temp * 2 + (CarryOut ^ s15);
+	}
+	else
+	{
+		temp = (d + s); 	// Get CarryOut
+		d = temp * 2 + (CarryOut ^ s15);
+	}
+```
+
+`s` (x0/y0/x1/y1) is sign extended before addition/subtraction.
+
+Example (div a, x0):
+
+```
+[a2] [a1] [a0] = [a2] [a1] [a0] +/- [sign] [x0] [0]
+```
+
+### addc
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|s|Register|
+|---|---|
+|0|x|
+|1|y|
+
+Example (addc a, x):
+
+```
+[a2] [a1] [a0] = [a2] [a1] [a0] + [sign] [x1] [x0] + PSR.C
+```
+
+### subc
+
+Example (subc a, x):
+
+```
+[a2] [a1] [a0] = [a2] [a1] [a0] + ~([sign] [x1] [x0]) + PSR.C
+```
+
+### negc
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+Example (negc a):
+
+```
+[a2] [a1] [a0] = [0] [0] [0] + ~([a2] [a1] [a0]) + PSR.C
+```
+
+### max
+
+Absolute compare.
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|s|Register|
+|---|---|
+|00|x0|
+|01|y0|
+|10|x1|
+|11|y1|
+
+Example max a, x0:
+
+```
+Flags <- abs ( [a2] [a1] [a0]) - abs ( [sign] [x0] [0] )
+```
+
+### lsf (Regular Form 1)
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
+
+If -s < 0 logic shift right d by s.
+
+Else logic shift left d by \~s+1.
+
+### lsf (Regular Form 2)
+
+|d|Register|s|
+|---|---|
+|0|a|b1|
+|1|b|a1|
+
+If -s < 0 logic shift right d by s.
+
+Else logic shift left d by \~s+1.
+
+### asf (Regular Form 1)
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
+
+If -s < 0 arithmetic shift right d by s.
+
+Else shift left d by \~s+1.
+
+### asf (Regular Form 2)
+
+|d|Register|s|
+|---|---|---|
+|0|a|b1|
+|1|b|a1|
+
+If -s < 0 arithmetic shift right d by s.
+
+Else shift left d by \~s+1.
+
+### ld
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+|mn|r modify|
+|---|---|
+|00|0|
+|01|-1|
+|10|+1|
+|11|+m|
+
+```
+	d = READ_DMEM(rn);
+	rn = rn + (0,-1,+1,+m)
+```
+
+### lda
+
+|r|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+|m|modifier|
+|---|---|
+|00|0|
+|01|+1|
+|10|x0|
+|11|y0|
+
+```
+	d = READ_DMEM(a1/b1);
+	a1/b1 = a1/b1 + (0,+1,+x0,+y0)
+```
+
+### st
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+|mn|r modify|
+|---|---|
+|00|0|
+|01|-1|
+|10|+1|
+|11|+m|
+
+```
+	WRITE_DMEM(rn, s)
+	rn = rn + (0,-1,+1,+m)
+```
+
+### sta
+
+|r|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+|m|modifier|
+|---|---|
+|00|0|
+|01|+1|
+|10|x0|
+|11|y0|
+
+```
+	WRITE_DMEM(a1/b1, s)
+	a1/b1 = a1/b1 + (0,+1,+x0,+y0)
+```
+
+### ldsa
+
+|d|Register|
+|---|---|
+|000|x0|
+|001|y0|
+|010|x1|
+|011|y1|
+|100|a0|
+|101|b0|
+|110|XL=0: a1, XL=1: a|
+|111|XL=0: b1, XL=1: b|
+
+```
+	d = READ_DMEM ( (dpp << 8) | sa)
+```
+
+### stsa
+
+|s|Register|
+|---|---|
+|000|a2 (sign-extended to 16 bit)|
+|001|b2 (sign-extended to 16 bit)|
+|010|-|
+|011|-|
+|100|a0|
+|101|b0|
+|110|XL=0: a1, XL=1: a|
+|111|XL=0: b1, XL=1: b|
+
+```
+	WRITE_DMEM ((dpp << 8) | sa, s)
+```
+
+### ldla
+
+```
+	d = READ_DMEM(la)
+```
+
+### stla
+
+```
+	WRITE_DMEM(la, s)
+```
+
+Output from a2/b2 is sign-extended to 16-bit.
+
+### mv (Regular)
+
+```
+	d = s
+```
+
+### mvsi
+
+|d|Register|
+|---|---|
+|000|x0|
+|001|y0|
+|010|x1|
+|011|y1|
+|100|a0|
+|101|b0|
+|110|XL=0: a1, XL=1: a|
+|111|XL=0: b1, XL=1: b|
+
+```
+	d = si
+```
+
+### mvli
+
+```
+	d = li
+```
+
+### stli
+
+```
+	WRITE_DMEM ( (0xFF00 | sa), li)
+```
+
+### clrb
+
+Clear PSR bit.
+
+|b|Bit|
+|---|---|
+|000|tb|
+|001|sv|
+|010|te0|
+|011|te1|
+|100|te2|
+|101|te3|
+|110|et|
+|111|-|
+
+### setb
+
+Set PSR bit.
+
+|b|Bit|
+|---|---|
+|000|tb|
+|001|sv|
+|010|te0|
+|011|te1|
+|100|te2|
+|101|te3|
+|110|et|
+|111|-|
+
+### btstl
+
+Used to poll hardware registers.
+
+|d|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+```
+	psr.tb = (d & BitMask) == 0
+```
+
+### btsth
+
+Used to poll hardware registers.
+
+|d|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+```
+	psr.tb = (d & BitMask) != 0
+```
+
+## Parallel Instructions Operation Notes
+
+### add
+
+### addl
+
+### sub
+
+### amv
+
+### cmp
+
+### cmp (Accumulator)
+
+### inc
+
+### dec
+
+### abs
+
+### neg
+
+### negp
+
+### clr
+
+### clrp
+
+### rnd
+
+### rndp
+
+### tst (Form 1)
+
+### tst (Form 2)
+
+### tstp
+
+### lsl16
+
+### lsr16
+
+### asr16
+
+### addp
+
+### nop2
+
+### clrim
+
+### clrdp
+
+### clrxl
+
+### setim
+
+### setdp
+
+### setxl
+
+### mpy (Form 1)
+
+### mpy (Form 2)
+
+### mac (Form 1)
+
+### mac (Form 2)
+
+### mac (Form 3)
+
+### macn (Form 1)
+
+### macn (Form 2)
+
+### macn (Form 3)
+
+### mvmpy
+
+### rnmpy
+
+### admpy
+
+### not
+
+### xor (Form 1)
+
+### xor (Form 2)
+
+### and (Form 1)
+
+### and (Form 2)
+
+### or (Form 1)
+
+### or (Form 2)
+
+### lsf (Parallel Form 1)
+
+### lsf (Parallel Form 2)
+
+### asf (Parallel Form 1)
+
+### asf (Parallel Form 2)
+
+## Parallel Load/Store/Move Instructions Operation Notes
+
+### ldd
+
+### ldd2
+
+### ls
+
+### ls2
+
+### ld
+
+### st
+
+### mv (Parallel)
+
+### mr (Parallel)
