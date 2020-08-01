@@ -728,7 +728,7 @@ Else logic shift left d by \~s+1.
 ### lsf (Regular Form 2)
 
 |d|Register|s|
-|---|---|
+|---|---|---|
 |0|a|b1|
 |1|b|a1|
 
