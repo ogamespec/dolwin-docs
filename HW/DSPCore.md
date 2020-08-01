@@ -38,8 +38,8 @@ Before reading this document, keep in mind that all DSP designers and programmer
 |27|y1|ALU/Multiplier input operand `y` high part|
 |28|a0|40-bit accumulator `a` low 16 bits|
 |29|b0|40-bit accumulator `b` low 16 bits|
-|30|a/a1|40-bit accumulator `a` middle 16 bits / Whole `a` accumulator|
-|31|b/b1|40-bit accumulator `b` middle 16 bits / Whole `b` accumulator|
+|30|a1/a|40-bit accumulator `a` middle 16 bits / Whole `a` accumulator|
+|31|b1/b|40-bit accumulator `b` middle 16 bits / Whole `b` accumulator|
 
 Not all registers are associated with simple DFF stores. Reading/writing some of them triggers the work of internal circuits, and some are freaked out by themselves. Specifically:
 - Stack registers implement a transparent FIFO mechanism for implementing hardware stacks
