@@ -298,8 +298,8 @@ The description is given in the form of pseudocode and mnemonic schemes.
 ### jmp
 
 ```
-	if (Condition() == true) PC = ta;
-	else PC = PC + 2;
+if (Condition() == true) PC = ta;
+else PC = PC + 2;
 ```
 
 ### jmpr
@@ -312,19 +312,19 @@ The description is given in the form of pseudocode and mnemonic schemes.
 |11|r3|
 
 ```
-	if (Condition() == true) PC = rn;
-	else PC = PC + 1;
+if (Condition() == true) PC = rn;
+else PC = PC + 1;
 ```
 
 ### call
 
 ```
-	if (Condition() == true)
-	{
-		PC = ta;
-		pcs <- PC + 2; 	// Push return address on PC Stack
-	}
-	else PC = PC + 2;
+if (Condition() == true)
+{
+	PC = ta;
+	pcs <- PC + 2; 	// Push return address on PC Stack
+}
+else PC = PC + 2;
 ```
 
 ### callr
@@ -332,41 +332,41 @@ The description is given in the form of pseudocode and mnemonic schemes.
 rn parameter is same as jmpr.
 
 ```
-	if (Condition() == true)
-	{
-		PC = rn;
-		pcs <- PC + 1; 	// Push return address on PC Stack
-	}
-	else PC = PC + 1;
+if (Condition() == true)
+{
+	PC = rn;
+	pcs <- PC + 1; 	// Push return address on PC Stack
+}
+else PC = PC + 1;
 ```
 
 ### rets
 
 ```
-	if (Condition() == true)
-	{
-		PC <- pcs; 	// Pops from PC Stack
-	}
-	else PC = PC + 1;
+if (Condition() == true)
+{
+	PC <- pcs; 	// Pops from PC Stack
+}
+else PC = PC + 1;
 ```
 
 ### reti
 
 ```
-	if (Condition() == true)
-	{
-		PC <- pcs; 	// Pops from PC Stack
-		PSR <- pss; 	// Pops from PSR Stack
-	}
-	else PC = PC + 1;
+if (Condition() == true)
+{
+	PC <- pcs; 	// Pops from PC Stack
+	PSR <- pss; 	// Pops from PSR Stack
+}
+else PC = PC + 1;
 ```
 
 ### trap
 
 ```
-	pcs <- PC + 1; 		// Push return address
-	pss <- PSR; 		// Push PSR
-	PC = 0x0004;	
+pcs <- PC + 1; 		// Push return address
+pss <- PSR; 		// Push PSR
+PC = 0x0004;	
 ```
 
 ### wait
@@ -376,14 +376,14 @@ Wait until some unmasked interrupt occures. Disconnects the clock generator from
 ### exec
 
 ```
-	if (Condition() == true)
-	{
-		PC = PC + 1;	// Execute next single-word instruction
-	}
-	else
-	{
-		PC = PC + 2; 	// Skip next single-word instruction
-	}
+if (Condition() == true)
+{
+	PC = PC + 1;	// Execute next single-word instruction
+}
+else
+{
+	PC = PC + 2; 	// Skip next single-word instruction
+}
 ```
 
 ### loop
@@ -466,8 +466,8 @@ LOOP and REP instructions can behave quite exotic if you insert control flow ins
 |11|r3|
 
 ```
-	a/b = READ_IMEM(rn);
-	rn = rn + (0,-1,+1,+m)
+a/b = READ_IMEM(rn)
+rn = rn + (0,-1,+1,+m)
 ```
 
 The index of the modified register `rn` corresponds to the index of the register `mn`. For example, if register r1 is used, it will be modified by register m1.
@@ -477,7 +477,7 @@ Modifications are made according to circular addressing rules.
 ### nop
 
 ```
-	PC = PC + 1
+PC = PC + 1
 ```
 
 ### mr (Regular)
@@ -593,20 +593,20 @@ li is not sign-extended.
 |11|r3|
 
 ```
-	if (E != 0)
-	{
-		d = d >> 1; 		// Arithemic (extend sign)
-		rn = rn + 1;
-	}
-	else if ( (~E & U & ~Z) != 0 )
-	{
-		d = d << 1;
-		rn = rn - 1;
-	}
-	else
-	{
-		// Nop
-	}
+if (E != 0)
+{
+	d = d >> 1; 		// Arithemic (extend sign)
+	rn = rn + 1;
+}
+else if ( (~E & U & ~Z) != 0 )
+{
+	d = d << 1;
+	rn = rn - 1;
+}
+else
+{
+	// Nop
+}
 ```
 
 ### div
@@ -628,16 +628,16 @@ As in many similar processors, division is performed by a series of successive s
 |11|y1|
 
 ```
-	if ((d39 ^ s15) == 0) 		// Same sign
-	{
-		temp = (d - s); 	// Get CarryOut
-		d = temp * 2 + (CarryOut ^ s15);
-	}
-	else
-	{
-		temp = (d + s); 	// Get CarryOut
-		d = temp * 2 + (CarryOut ^ s15);
-	}
+if ((d39 ^ s15) == 0) 		// Same sign
+{
+	temp = (d - s); 	// Get CarryOut
+	d = temp * 2 + (CarryOut ^ s15);
+}
+else
+{
+	temp = (d + s); 	// Get CarryOut
+	d = temp * 2 + (CarryOut ^ s15);
+}
 ```
 
 `s` (x0/y0/x1/y1) is sign extended before addition/subtraction.
@@ -780,8 +780,8 @@ Else shift left d by \~s+1.
 |11|+m|
 
 ```
-	d = READ_DMEM(rn);
-	rn = rn + (0,-1,+1,+m)
+d = READ_DMEM(rn);
+rn = rn + (0,-1,+1,+m)
 ```
 
 ### lda
@@ -799,8 +799,8 @@ Else shift left d by \~s+1.
 |11|y0|
 
 ```
-	d = READ_DMEM(a1/b1);
-	a1/b1 = a1/b1 + (0,+1,+x0,+y0)
+d = READ_DMEM(a1/b1);
+a1/b1 = a1/b1 + (0,+1,+x0,+y0)
 ```
 
 ### st
@@ -820,8 +820,8 @@ Else shift left d by \~s+1.
 |11|+m|
 
 ```
-	WRITE_DMEM(rn, s)
-	rn = rn + (0,-1,+1,+m)
+WRITE_DMEM(rn, s)
+rn = rn + (0,-1,+1,+m)
 ```
 
 ### sta
@@ -839,8 +839,8 @@ Else shift left d by \~s+1.
 |11|y0|
 
 ```
-	WRITE_DMEM(a1/b1, s)
-	a1/b1 = a1/b1 + (0,+1,+x0,+y0)
+WRITE_DMEM(a1/b1, s)
+a1/b1 = a1/b1 + (0,+1,+x0,+y0)
 ```
 
 ### ldsa
@@ -857,7 +857,7 @@ Else shift left d by \~s+1.
 |111|XL=0: b1, XL=1: b|
 
 ```
-	d = READ_DMEM ( (dpp << 8) | sa)
+d = READ_DMEM ( (dpp << 8) | sa)
 ```
 
 ### stsa
@@ -874,19 +874,19 @@ Else shift left d by \~s+1.
 |111|XL=0: b1, XL=1: b|
 
 ```
-	WRITE_DMEM ((dpp << 8) | sa, s)
+WRITE_DMEM ((dpp << 8) | sa, s)
 ```
 
 ### ldla
 
 ```
-	d = READ_DMEM(la)
+d = READ_DMEM(la)
 ```
 
 ### stla
 
 ```
-	WRITE_DMEM(la, s)
+WRITE_DMEM(la, s)
 ```
 
 Output from a2/b2 is sign-extended to 16-bit.
@@ -894,7 +894,7 @@ Output from a2/b2 is sign-extended to 16-bit.
 ### mv (Regular)
 
 ```
-	d = s
+d = s
 ```
 
 ### mvsi
@@ -911,19 +911,19 @@ Output from a2/b2 is sign-extended to 16-bit.
 |111|XL=0: b1, XL=1: b|
 
 ```
-	d = si
+d = si
 ```
 
 ### mvli
 
 ```
-	d = li
+d = li
 ```
 
 ### stli
 
 ```
-	WRITE_DMEM ( (0xFF00 | sa), li)
+WRITE_DMEM ( (0xFF00 | sa), li)
 ```
 
 ### clrb
@@ -966,7 +966,7 @@ Used to poll hardware registers.
 |1|b1|
 
 ```
-	psr.tb = (d & BitMask) == 0
+psr.tb = (d & BitMask) == 0
 ```
 
 ### btsth
@@ -979,7 +979,7 @@ Used to poll hardware registers.
 |1|b1|
 
 ```
-	psr.tb = (d & BitMask) != 0
+psr.tb = (d & BitMask) != 0
 ```
 
 ## Parallel Instructions Operation Notes
