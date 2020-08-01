@@ -321,8 +321,8 @@ else PC = PC + 1;
 ```
 if (Condition() == true)
 {
+	pcs <- PC + 2; 	// Push return address on PC Stack	
 	PC = ta;
-	pcs <- PC + 2; 	// Push return address on PC Stack
 }
 else PC = PC + 2;
 ```
@@ -334,8 +334,8 @@ rn parameter is same as jmpr.
 ```
 if (Condition() == true)
 {
+	pcs <- PC + 1; 	// Push return address on PC Stack	
 	PC = rn;
-	pcs <- PC + 1; 	// Push return address on PC Stack
 }
 else PC = PC + 1;
 ```
