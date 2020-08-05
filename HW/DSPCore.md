@@ -986,33 +986,277 @@ psr.tb = (d & BitMask) != 0
 
 ### add
 
+|s|Register|
+|---|---|
+|000|x0|
+|001|y0|
+|010|x1|
+|011|y1|
+|100|x|
+|101|y|
+|110|b/a|
+|111|p (Folded product)|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+d = d + s
+```
+
+Examples:
+
+```
+[a2] [a1] [a0] = [a2] [a1] [a0] + [sign] [x0] [0]    	(x0, y0, x1, y1)
+
+[a2] [a1] [a0] = [a2] [a1] [a0] + [sign] [x1] [x0] 		(x, y)
+
+[a2] [a1] [a0] = [a2] [a1] [a0] + [b2] [b1] [b0] 		(a,b or vice versa)
+
+[a2] [a1] [a0] = [a2] [a1] [a0] + [p2] [p1] [p0] 		(p)
+```
+
 ### addl
+
+|s|Register|
+|---|---|
+|0|x0|
+|1|y0|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+d = d + s
+
+[a2] [a1] [a0] = [a2] [a1] [a0] + [0] [0] [x0]
+```
 
 ### sub
 
+Same as add, but d = d - s
+
 ### amv
+
+The Move version that sets the PSR flags.
+
+|s|Register|
+|---|---|
+|000|x0|
+|001|y0|
+|010|x1|
+|011|y1|
+|100|x|
+|101|y|
+|110|b/a|
+|111|p (Folded product)|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+d = 0 + s
+```
+
+Examples:
+
+```
+[a2] [a1] [a0] = [0] [0] [0] + [sign] [x0] [0]    	(x0, y0, x1, y1)
+
+[a2] [a1] [a0] = [0] [0] [0] + [sign] [x1] [x0] 	(x, y)
+
+[a2] [a1] [a0] = [0] [0] [0] + [b2] [b1] [b0] 		(a,b or vice versa)
+
+[a2] [a1] [a0] = [0] [0] [0] + [p2] [p1] [p0] 		(p)
+```
 
 ### cmp
 
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+Flags <- [a2] [a1] [a0] - [sign] [x1] [0]
+```
+
 ### cmp (Accumulator)
+
+```
+Flags <- [a2] [a1] [a0] - [b2] [b1] [b0]
+```
 
 ### inc
 
+|d|Register|
+|---|---|
+|00|a1|
+|01|b1|
+|10|a|
+|11|b|
+
+```
+Flags <- [a2] [a1] [a0] + [0] [1] [0]   (a1/b1 version)
+
+Flags <- [a2] [a1] [a0] + [0] [0] [1]   (a/b version)
+```
+
 ### dec
+
+|d|Register|
+|---|---|
+|00|a1|
+|01|b1|
+|10|a|
+|11|b|
+
+```
+Flags <- [a2] [a1] [a0] - [0] [1] [0]   (a1/b1 version)
+
+Flags <- [a2] [a1] [a0] - [0] [0] [1]   (a/b version)
+```
 
 ### abs
 
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+if ( d39 == 0 ) 		// >= 0
+{
+	d = 0 + d
+}
+else
+{
+	d = 0 - d
+}
+```
+
 ### neg
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+d = 0 - d
+```
 
 ### negp
 
+```
+d = 0 - p 		// "Folded" product
+```
+
 ### clr
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+d = 0
+```
 
 ### clrp
 
+```
+// p = Product_Zero 
+
+ps0 = 0x0000
+ps1 = 0xfff0
+ps2 = 0x00ff
+pc1 = 0x0010
+```
+
 ### rnd
 
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+if (d0 < 0x8000)
+{
+	d = d + 0x00'0000'0000;
+	d0 = 0;	
+}
+else if (d0 > 0x8000)
+{
+	d = d + 0x00'0001'0000;
+	d0 = 0;	
+}
+else 	// == 0x8000
+{
+	if (d16 == 0) 		// lsb of d1
+	{
+		d = d + 0x00'0000'0000;
+		d0 = 0;	
+	}
+	else
+	{
+		d = d + 0x00'0001'0000;
+		d0 = 0;	
+	}
+}
+```
+
 ### rndp
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+if (p0 < 0x8000)
+{
+	p = PackProd();
+	d = p + 0x00'0000'0000;
+	d0 = 0;
+}
+else if (d0 > 0x8000)
+{
+	p = PackProd();
+	d = p + 0x00'0001'0000;
+	d0 = 0;	
+}
+else 	// == 0x8000
+{
+	if (p16 == 0) 		// lsb of p1
+	{
+		p = PackProd();
+		d = p + 0x00'0000'0000;
+		d0 = 0;
+	}
+	else
+	{
+		p = PackProd();
+		d = p + 0x00'0001'0000;
+		d0 = 0;
+	}
+}
+
+PackProd: p = ((ps2 << 24) | (ps1 << 16) | ps0) + (pc1 << 16)
+
+```
 
 ### tst (Form 1)
 
