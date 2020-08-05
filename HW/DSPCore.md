@@ -304,6 +304,8 @@ else PC = PC + 2;
 
 ### jmpr
 
+The instruction is actually called `jmp`, but I've renamed it for clarity.
+
 |rr|Register|
 |---|---|
 |00|r0|
@@ -317,6 +319,8 @@ else PC = PC + 1;
 ```
 
 ### call
+
+The instruction is actually called `call`, but I've renamed it for clarity.
 
 ```
 if (Condition() == true)
@@ -439,6 +443,8 @@ next_instr()
 ```
 
 ### repr
+
+The instruction is actually called `rep`, but I've renamed it for clarity.
 
 Same as rep, but repeat count is taken from register.
 
@@ -786,6 +792,8 @@ rn = rn + (0,-1,+1,+m)
 
 ### lda
 
+The instruction is actually called `ld`, but I've renamed it for clarity.
+
 |r|Register|
 |---|---|
 |0|a1|
@@ -825,6 +833,8 @@ rn = rn + (0,-1,+1,+m)
 ```
 
 ### sta
+
+The instruction is actually called `st`, but I've renamed it for clarity.
 
 |r|Register|
 |---|---|
@@ -928,6 +938,8 @@ WRITE_DMEM ( (0xFF00 | sa), li)
 
 ### clrb
 
+The instruction is actually called `clr`, but I've renamed it for clarity.
+
 Clear PSR bit.
 
 |b|Bit|
@@ -942,6 +954,8 @@ Clear PSR bit.
 |111|-|
 
 ### setb
+
+The instruction is actually called `set`, but I've renamed it for clarity.
 
 Set PSR bit.
 
@@ -1159,6 +1173,8 @@ d = 0 - d
 
 ### negp
 
+The instruction is actually called `neg`, but I've renamed it for clarity.
+
 ```
 d = 0 - p 		// "Folded" product
 ```
@@ -1175,6 +1191,8 @@ d = 0
 ```
 
 ### clrp
+
+The instruction is actually called `clr`, but I've renamed it for clarity.
 
 ```
 // p = Product_Zero 
@@ -1274,17 +1292,31 @@ PackProd: p = ((ps2 << 24) | (ps1 << 16) | ps0) + (pc1 << 16)
 
 ### nop2
 
+The instruction is actually called `nop`, but I've renamed it for clarity.
+
 ### clrim
+
+The instruction is actually called `clr`, but I've renamed it for clarity.
 
 ### clrdp
 
+The instruction is actually called `clr`, but I've renamed it for clarity.
+
 ### clrxl
+
+The instruction is actually called `clr`, but I've renamed it for clarity.
 
 ### setim
 
+The instruction is actually called `set`, but I've renamed it for clarity.
+
 ### setdp
 
+The instruction is actually called `set`, but I've renamed it for clarity.
+
 ### setxl
+
+The instruction is actually called `set`, but I've renamed it for clarity.
 
 ### mpy (Form 1)
 
@@ -1336,9 +1368,13 @@ PackProd: p = ((ps2 << 24) | (ps1 << 16) | ps0) + (pc1 << 16)
 
 ### ldd2
 
+The instruction is actually called `ldd`, but I've renamed it for clarity.
+
 ### ls
 
 ### ls2
+
+The instruction is actually called `ls`, but I've renamed it for clarity.
 
 ### ld
 
