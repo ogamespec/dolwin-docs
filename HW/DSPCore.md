@@ -79,7 +79,17 @@ This feature is used in DSP processing, for example, for clamping samples (e.g. 
 
 ## Circular Addressing
 
-TBD.
+DSP contains hardware implementation of circular buffers. A total of 4 circular buffers are supported.
+
+Each circular buffer is specified by a set of corresponding registers: r (Current address), m (Modifier) and l (Buffer Length).
+
+Registers r and l are 16-bit unsigned numbers, register m is a 16-bit signed number.
+The real size of the buffer is equal to the value in register l + 1.
+If the l value is 0xFFFF, this mode is called linear and does not differ from the work of buffers in the usual sense.
+
+To understand how circular buffers work, take a look at the image where the buffer size is 7 (l = 6):
+
+![DspCircularAddressing.png](DspCircularAddressing.png)
 
 ## Stack operation
 
