@@ -83,7 +83,19 @@ TBD.
 
 ## Stack operation
 
-TBD.
+DSP contains 4 hardware stacks:
+- Program counter stack
+- Program status stack
+- End address stack
+- Loop count stack
+
+The nesting depth of all stacks is 4, except for the Program counter stack, which is 8.
+
+An attempt to push to a full stack or an attempt to Pop from an empty stack generates an ERR interrupt.
+
+The user can force pop and push values onto the stack using the LD and ST instructions and the corresponding stack registers.
+
+It is also a feature that End address stack and Loop count stack have a common stack pointer.
 
 ## Condition code
 
@@ -121,7 +133,7 @@ Used in conditional flow control instructions.
 |0x000C|AI DMA interrupt (enabled by TE2)|
 |0x000E|CPU->DSP interrupt (enabled by TE3) (lowest priority)|
 
-ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1).
+ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1). Also, these (ACRS, ACWE and DCRE) interrupts are generated regardless of whether the ET bit is set or cleared (controlled only by the TE1 bit)
 
 ## Flag modify rules
 
