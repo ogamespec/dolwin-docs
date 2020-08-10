@@ -42,7 +42,7 @@ Before reading this document, keep in mind that all DSP designers and programmer
 |31|b1/b|40-bit accumulator `b` middle 16 bits / Whole `b` accumulator|
 
 Not all registers are associated with simple DFF stores. Reading/writing some of them triggers the work of internal circuits, and some are freaked out by themselves. Specifically:
-- Stack registers implement a transparent FIFO mechanism for implementing hardware stacks
+- Stack registers implement a transparent LIFO mechanism for implementing hardware stacks
 - The result of the multiplication is stored as a set of partial sums and carry. Upon request (in some instructions) these registers are "folded" into the full result, as written in the Duddie document. Why is this done? Well, most likely this is how the multiplier is implemented in HDL (it's easier to store intermediate results). The exact algorithm of the multiplier is unknown, but you can guess that these temporary results are collected from partial sums of multiplications between the upper and lower halves of the 16-bit operands.
 - Registers a1/b1 have a special logic of operation associated with the PSR.XL bit.
 
