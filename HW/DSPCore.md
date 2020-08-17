@@ -91,6 +91,27 @@ To understand how circular buffers work, take a look at the image where the buff
 
 ![DspCircularAddressing.png](DspCircularAddressing.png)
 
+How to express this algorithmically, try to figure it out for yourself, this is a really unusual task that Non-DSP programmers do not face every day.
+
+Here are some values for a unit test:
+
+|r|l|m|next r|
+|---|---|---|---|
+|0|0xffff|+1|1|
+|1|0xffff|-1|0|
+|0|0xffff|-1|0xffff|
+|0x8000|0xffff|-1|0x7fff|
+|0x8000|0xffff|+1|0x8001|
+|5|6|+1|6|
+|6|6|+1|0|
+|0|6|-1|6|
+|0xffff|6|-2|4|
+|0xffff|6|+6|0xfffe|
+|11|6|+3|7|
+|11|6|-5|13|
+|11|6|+14|11|
+|11|6|-11|7|
+
 ## Stack operation
 
 DSP contains 4 hardware stacks:
