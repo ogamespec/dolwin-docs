@@ -279,12 +279,12 @@ Note that instructions starting with 0b0011 (logical operations) take an extra b
 |asr16 d|1001 d001 xxxx xxxx|0|0|Z1|N1|E1|U1|Arithmetic shift right 16|1|
 |addp d,s|1111 10sd xxxx xxxx|C8|V7|Z1|N1|E1|U1|Add x/y with product|1|
 |nop2|1000 0000 xxxx xxxx|-|-|-|-|-|-|Parallel nop|1|
-|clrim|1000 1010 xxxx xxxx|-|-|-|-|-|-|Clear IM|1|
-|clrdp|1000 1100 xxxx xxxx|-|-|-|-|-|-|Clear DP|1|
-|clrxl|1000 1110 xxxx xxxx|-|-|-|-|-|-|Clear XL|1|
-|setim|1000 1011 xxxx xxxx|-|-|-|-|-|-|Set IM|1|
-|setdp|1000 1101 xxxx xxxx|-|-|-|-|-|-|Set DP|1|
-|setxl|1000 1111 xxxx xxxx|-|-|-|-|-|-|Set XL|1|
+|clr im|1000 1010 xxxx xxxx|-|-|-|-|-|-|Clear IM|1|
+|clr dp|1000 1100 xxxx xxxx|-|-|-|-|-|-|Clear DP|1|
+|clr xl|1000 1110 xxxx xxxx|-|-|-|-|-|-|Clear XL|1|
+|set im|1000 1011 xxxx xxxx|-|-|-|-|-|-|Set IM|1|
+|set dp|1000 1101 xxxx xxxx|-|-|-|-|-|-|Set DP|1|
+|set xl|1000 1111 xxxx xxxx|-|-|-|-|-|-|Set XL|1|
 |mpy s1,s2|1sss s000 xxxx xxxx|-|-|-|-|-|-|Mixed multiply (Form 1)|1|
 |mpy x1,x1|1000 0011 xxxx xxxx|-|-|-|-|-|-|Mixed multiply x1\*x1 (Form 2)|1|
 |mac s1,s2|1110 00ss xxxx xxxx|-|-|-|-|-|-|Multiply and accumulate (Form 1)|1|
@@ -1321,67 +1321,309 @@ PackProd: p = ((ps2 << 24) | (ps1 << 16) | ps0) + (pc1 << 16)
 
 ### tst (Form 1)
 
+|s|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+Flags <- [a2] [a1] [a0] + [0] [0] [0]
+```
+
 ### tst (Form 2)
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
+
+```
+Flags <- [sign] [x1] [0] + [0] [0] [0]
+```
 
 ### tstp
 
+Test multiply product.
+
+```
+Flags <- [ps2] [ps1] [ps0] + [0] [pc1] [0]
+```
+
 ### lsl16
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+a = a << 16
+```
 
 ### lsr16
 
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+a = a >> 16 		// Logic shift
+```
+
 ### asr16
 
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+a = a >>A 16 		// Arithmetic shift (propagate msb)
+```
+
 ### addp
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+```
+p = PackProd();
+
+[a2] [a1] [a0] = [sign] [x1] [0] + [sign] [p1] [p0]
+```
 
 ### nop2
 
 The instruction is actually called `nop`, but I've renamed it for clarity.
 
-### clrim
+### clr im
 
-The instruction is actually called `clr`, but I've renamed it for clarity.
+PSR.IM = 0
 
-### clrdp
+### clr dp
 
-The instruction is actually called `clr`, but I've renamed it for clarity.
+PSR.DP = 0
 
-### clrxl
+### clr xl
 
-The instruction is actually called `clr`, but I've renamed it for clarity.
+PSR.XL = 0
 
-### setim
+### set im
 
-The instruction is actually called `set`, but I've renamed it for clarity.
+PSR.IM = 1
 
-### setdp
+### set dp
 
-The instruction is actually called `set`, but I've renamed it for clarity.
+PSR.DP = 1
 
-### setxl
+### set xl
 
-The instruction is actually called `set`, but I've renamed it for clarity.
+PSR.XL = 1
 
 ### mpy (Form 1)
 
+|s|s1|s2|
+|---|---|---|
+|0010|x1|x0|
+|0011|y1|y0|
+|0100|x0|y0|
+|0101|x0|y1|
+|0110|x1|y0|
+|0111|x1|y1|
+|1000|a1|x1|
+|1001|a1|y1|
+|1010|b1|x1|
+|1011|b1|y1|
+
+IM=1 (integer mode): p = s1 * s2
+IM=0 (fraction mode): p = s1 * (2 * s2)
+
+When DP=1:
+
+```
+x0 * y0: unsigned * unsigned
+x0 * y1: unsigned * signed
+x1 * y0: signed * unsigned
+x1 * y1: signed * signed
+```
+
 ### mpy (Form 2)
+
+Same as Form 1, but s1 = s2 = x1.
 
 ### mac (Form 1)
 
+|s|s1|s2|
+|---|---|---|
+|00|x0|y0|
+|01|x0|y1|
+|10|x1|y0|
+|11|x1|y1|
+
+IM=1 (integer mode): p = s1 * s2 + p
+IM=0 (fraction mode): p = s1 * (2 * s2) + p
+
+```
+[p2] [p1] [p0] = s1 * s2 + [p2] [p1] [p0]
+```
+
 ### mac (Form 2)
+
+|s|s1|s2|
+|---|---|---|
+|00|a1|x1|
+|01|a1|y1|
+|10|b1|x1|
+|11|b1|y1|
 
 ### mac (Form 3)
 
+|s|s1|s2|
+|---|---|---|
+|0|x1|x0|
+|1|y1|y0|
+
 ### macn (Form 1)
+
+Differs from `mac` instruction in that s1 parameter is minus sign.
+
+|s|s1|s2|
+|---|---|---|
+|00|x0|y0|
+|01|x0|y1|
+|10|x1|y0|
+|11|x1|y1|
+
+IM=1 (integer mode): p = -s1 * s2 + p
+IM=0 (fraction mode): p = -s1 * (2 * s2) + p
+
+```
+[p2] [p1] [p0] = -s1 * s2 + [p2] [p1] [p0]
+```
 
 ### macn (Form 2)
 
+|s|s1|s2|
+|---|---|---|
+|00|a1|x1|
+|01|a1|y1|
+|10|b1|x1|
+|11|b1|y1|
+
 ### macn (Form 3)
+
+|s|s1|s2|
+|---|---|---|
+|0|x1|x0|
+|1|y1|y0|
 
 ### mvmpy
 
+Differs from `mpy` instruction in that product is pre-stored in register a/b.
+
+|s|s1|s2|
+|---|---|---|
+|0010|x1|x0|
+|0011|y1|y0|
+|0100|x0|y0|
+|0101|x0|y1|
+|0110|x1|y0|
+|0111|x1|y1|
+|1000|a1|x1|
+|1001|a1|y1|
+|1010|b1|x1|
+|1011|b1|y1|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+IM=1 (integer mode): d = p; p = s1 * s2
+IM=0 (fraction mode): d = p; p = s1 * (2 * s2)
+
+When DP=1:
+
+```
+x0 * y0: unsigned * unsigned
+x0 * y1: unsigned * signed
+x1 * y0: signed * unsigned
+x1 * y1: signed * signed
+```
+
 ### rnmpy
 
+|s|s1|s2|
+|---|---|---|
+|0010|x1|x0|
+|0011|y1|y0|
+|0100|x0|y0|
+|0101|x0|y1|
+|0110|x1|y0|
+|0111|x1|y1|
+|1000|a1|x1|
+|1001|a1|y1|
+|1010|b1|x1|
+|1011|b1|y1|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+IM=1 (integer mode): d = Rnd(p); p = s1 * s2
+IM=0 (fraction mode): d = Rnd(p); p = s1 * (2 * s2)
+
+Convergent rounding method used.
+
+When DP=1:
+
+```
+x0 * y0: unsigned * unsigned
+x0 * y1: unsigned * signed
+x1 * y0: signed * unsigned
+x1 * y1: signed * signed
+```
+
 ### admpy
+
+|s|s1|s2|
+|---|---|---|
+|0010|x1|x0|
+|0011|y1|y0|
+|0100|x0|y0|
+|0101|x0|y1|
+|0110|x1|y0|
+|0111|x1|y1|
+|1000|a1|x1|
+|1001|a1|y1|
+|1010|b1|x1|
+|1011|b1|y1|
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+IM=1 (integer mode): d = d + p; p = s1 * s2
+IM=0 (fraction mode): d = d + p; p = s1 * (2 * s2)
+
+When DP=1:
+
+```
+x0 * y0: unsigned * unsigned
+x0 * y1: unsigned * signed
+x1 * y0: signed * unsigned
+x1 * y1: signed * signed
+```
 
 ### not
 
