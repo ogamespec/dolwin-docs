@@ -35,3 +35,5 @@ To maintain compatibility with previous versions of AIX®, n is not restricted t
 |Clear left immediate|clrlwi RA, RS, n|rlwinm RA, RS, 0, n, 31|32 > n >= 0|
 |Clear right immediate|clrrwi RA, RS, n|rlwinm RA, RS, 0, 0, 31-n|32 > n >= 0|
 |Clear left and shift left immediate|clrslwi RA, RS, b, n|rlwinm RA, RS, b-n, 31-n|b-n >= 0 & 32 > n >= 0 & 32 > b>= 0|
+
+All of these extended mnemonics can be coded with a final . (period) to cause the Rc bit to be set in the underlying instruction.
