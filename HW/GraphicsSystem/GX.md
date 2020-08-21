@@ -1,6 +1,8 @@
 # Flipper GPU (GX)
 
-Flipper GPU (hereinafter GX) is a graphics processor with a fixed pipeline.
+Flipper GPU (hereinafter GX) is a graphics processor with a fixed pipeline. Although the GX is quite complex, it certainly does not compare with modern GPUs in terms of complexity.
+
+But even in spite of the average complexity - the GX scheme is so confusing that it is quite difficult to compose a document with a clear presentation structure. The formalization of knowledge on GX becomes available only after reading the entire documentation.
 
 GX connection with other Flipper components:
 
@@ -17,6 +19,8 @@ So that you can estimate the complexity of each GX component, here is a picture 
 Information in this document may be inaccurate and will be updated in the process.
 
 ## Gekko Write Gather Buffer
+
+Generally speaking, this section is not specific to GX, but it is better to put it here for context.
 
 Write Gather Buffer is a small FIFO inside the Gekko processor that collects single-beat writes at the specified physical address, and when 32 bytes are collected, it passes them to Flipper as a single burst transaction.
 
@@ -161,16 +165,20 @@ The vertex cache is an 8K, 8-way set-associative cache. It is possible to invali
 
 More description can be found in US6717577 "VERTEX CACHE FOR 3D COMPUTER GRAPHICS".
 
-## Internal State Registers
+### Internal State Registers
 
 GX state stored in 3 sets of registers:
 - CP Regs
 - XF Regs
-- SU Regs
+- So-called "ByPass" (BP) address space Regs. They are called ByPass, most likely because they are accessed bypassing the vertex transformation unit (XF)
 
-Writing to registers is performed by special FIFO commands. Partially registers are mapped to physical memory.
+Writing to registers is performed by special FIFO commands. Partially CP registers are mapped to CPU physical memory.
 
 ### CP Regs
+
+TBD.
+
+## Transform Unit (XF)
 
 TBD.
 
@@ -178,11 +186,9 @@ TBD.
 
 TBD.
 
-### SU Regs
+## Setup/Rasterizers (SU/RAS)
 
-TBD.
-
-## Setup/Rasterizer (SU/RAS)
+Setup unit receives vertex data from transform unit (XF) and sends triangle setup information to one or more rasterizer units performing edge rasterization, texture coordinate rasterization and color rasterization.
 
 Terminology:
 - The primitive is what the GX can draw. Triangle, point, etc.
@@ -194,7 +200,9 @@ The rasterizer(s) is able to draw the following graphic primitives:
 
 ![GX_Primitives](GX_Primitives.png)
 
-## Transform Unit (XF)
+The GX contains three rasterizers RAS0, RAS1 and RAS2.
+
+## Texture Environment Unit (TEV)
 
 TBD.
 
@@ -206,7 +214,7 @@ TBD.
 
 TBD.
 
-## Texture Environment Unit (TEV)
+## BP Address Space Regs
 
 TBD.
 
@@ -223,6 +231,8 @@ TBD.
 ### Pixel Engine Copy (PEC)
 
 TBD.
+
+### PE Registers
 
 ## GP Metrics
 
