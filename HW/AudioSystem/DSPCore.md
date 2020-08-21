@@ -1582,7 +1582,7 @@ x1 * y1: signed * signed
 IM=1 (integer mode): d = Rnd(p); p = s1 * s2
 IM=0 (fraction mode): d = Rnd(p); p = s1 * (2 * s2)
 
-Convergent rounding method used.
+Convergent rounding method used (see `rnd` instruction).
 
 When DP=1:
 
