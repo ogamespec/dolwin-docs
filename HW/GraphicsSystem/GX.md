@@ -214,10 +214,6 @@ TBD.
 
 TBD.
 
-## BP Address Space Regs
-
-TBD.
-
 ## Pixel Engine
 
 ### Embedded Frame Buffer (EFB)
@@ -235,5 +231,9 @@ TBD.
 ### PE Registers
 
 ## GP Metrics
+
+TBD.
+
+## BP Address Space Regs
 
 TBD.
