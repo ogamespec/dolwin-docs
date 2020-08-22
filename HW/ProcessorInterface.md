@@ -128,7 +128,11 @@ Mapped at 0x0C003000 physical address. 32-bit access.
 
 ### CHIPID (0x002C)
 
+This register contains information about the revision of the Flipper chip.
+
 ### STRGTH (0x0030)
+
+A number of Flipper interfaces have customizable drive strength. The value of this register is set immediately after the reset in the Reset vector (stage BS1). In theory, you can burn Flipper if you set high values and use it for a long time..
 
 |Bit Mask|Name|Meaning|
 |---|---|---|
