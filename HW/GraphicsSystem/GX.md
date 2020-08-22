@@ -176,7 +176,86 @@ Writing to registers is performed by special FIFO commands. Partially CP registe
 
 ### CP Regs
 
-TBD.
+|Register name|Register address [7:0]|Bit fields|
+|---|---|---|
+|MatrixIndexA	|0011xxxx|5:0 index for position/normal matrix|
+| 				|		 |11:6 index for tex0 matrix|
+| 				|		 |17:12 index for tex1 matrix|
+| 				|		 |23:18 index for tex2 matrix|
+| 				|		 |29:24 index for tex3 matrix|
+|MatrixIndexB	|0100xxxx|5:0 index for tex4 matrix|
+|				|		 |11:6 index for tex5 matrix|
+|				|		 |17:12 index for tex6 matrix|
+|				|		 |23:18 index for tex7 matrix|
+|VCD_Lo 		|0101xxxx|16:00 VCD 12 to 0|
+|				|		 |0 PosMatIdx|
+|				|		 |1 Tex0MatIdx|
+|				|		 |2 Tex1MatIdx|
+|				|		 |3 Tex2MatIdx|
+|				|		 |4 Tex3MatIdx|
+|				|		 |5 Tex4MatIdx|
+|				|		 |6 Tex5MatIdx|
+|				|		 |7 Tex6MatIdx|
+|				|		 |8 Tex7MatIdx|
+|				|		 |10:9 Position|
+|				|		 |12:11 Normal|
+|				|		 |14:13 ColorDiffused|
+|				|		 |16:15 ColorSpecular|
+|VCD_Hi			|0110xxxx|15:00 VCD 20 to 13|
+|				|		 |01:00 Tex0Coord|
+|				|		 |03:02 Tex1Coord|
+|				|		 |05:04 Tex2Coord|
+|				|		 |07:06 Tex3Coord|
+|				|		 |09:08 Tex4Coord|
+|				|		 |11:10 Tex5Coord|
+|				|		 |13:12 Tex6Coord|
+|				|		 |15:14 Tex7Coord|
+|VAT_group0 	|0111x,vat[2:0]	|32 bits|
+|				|				|08:00 Position parameters|
+|				|				|12:09 Normal parameters|
+|				|				|16:13 ColorDiffused parameters|
+|				|				|20:17 ColorSpecular parameters|
+|				|				|29:21 Tex0Coord parameters|
+|				|				|30:30 ByteDequant|
+|				|				|31:31 Normalindex3|
+|VAT_group1		|1000x,vat[2:0]	|32 bits|
+|				|				|08:00 Tex1Coord parameters|
+|				|				|17:09 Tex2Coord parameters|
+|				|				|26:18 Tex3Coord parameters|
+|				|				|30:27 Tex4Coord parameters sub-field[3:0]|
+|				|				|31 unused|
+|VAT_group2		|1001x,vat[2:0]	|32 bits|
+|				|				|04:00 Tex4Coord parameters sub-field[8:4]|
+|				|				|13:05 Tex5Coord parameters|
+|				|				|22:14 Tex6Coord parameters|
+|				|				|31:23 Tex7Coord parameters|
+|ArrayBase		|1010,array[3:0]	|32 bit data|
+|				|					|25:00 Base(25:0)|
+|				|					|31:26 unused|
+|ArrayStride 	|1011,array[3:0]	|32 bit data|
+|				|					|07:00 Stride(7:0)|
+|				|					|31:08 unused|
+
+Values for array[3:0] for ArrayBase and ArrayStride:
+
+|array[3:0] value|ArrayBase/ArrayStride register name|
+|---|---|
+|0000|atrributes9 base/stride register|
+|0001|atrributes10 base/stride register|
+|0010|atrributes11 base/stride register|
+|0011|atrributes12 base/stride register|
+|0100|atrributes13 base/stride register|
+|0101|atrributes14 base/stride register|
+|0110|atrributes15 base/stride register|
+|0111|atrributes16 base/stride register|
+|1000|atrributes17 base/stride register|
+|1001|atrributes18 base/stride register|
+|1010|atrributes19 base/stride register|
+|1011|atrributes20 base/stride register|
+|1100|IndexRegA base/stride register|
+|1101|IndexRegB base/stride register|
+|1110|IndexRegC base/stride register|
+|1111|IndexRegD base/stride register|
 
 ## Transform Unit (XF)
 
