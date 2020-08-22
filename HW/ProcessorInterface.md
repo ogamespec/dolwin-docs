@@ -51,11 +51,104 @@ Burst transactions are used for the following purposes:
 - Cache Fill
 - Transfer to Flipper contents of Write-Gather Buffer
 
-## PI Registers
+## PI Registers (Offset)
 
-### PI FIFO Registers
+Mapped at 0x0C003000 physical address. 32-bit access.
 
-### PI FIFO Base (0x0C00300C)
+### INTSR (0x0000)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x00000001|PIINT| |
+|0x00000002|RSWINT| |
+|0x00000004|DIINT| |
+|0x00000008|SIINT| |
+|0x00000010|EXINT| |
+|0x00000020|AIINT| |
+|0x00000040|DSPINT| |
+|0x00000080|MEMINT| |
+|0x00000100|VIINT| |
+|0x00000200|PEINT0| |
+|0x00000400|PEINT1| |
+|0x00000800|CPINT| |
+|0x00001000|DBGINT| |
+|0x0000e000|Unused| |
+|0x00010000|RSTVAL| |
+|0xfffe0000|Unused| |
+
+### INTMSK (0x0004)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x00000001|PIINT| |
+|0x00000002|RSWMSK| |
+|0x00000004|DIMSK| |
+|0x00000008|SIMSK| |
+|0x00000010|EXMSK| |
+|0x00000020|AIMSK| |
+|0x00000040|DSPMSK| |
+|0x00000080|MEMMSK| |
+|0x00000100|VIMSK| |
+|0x00000200|PEMSK0| |
+|0x00000400|PEMSK1| |
+|0x00000800|CPMSK| |
+|0x00001000|DBGMSK| |
+|0xffffe000|Unused| |
+
+### PIESR (0x001C)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x00000007|PIESR| |
+|0xfffffff8|Unused| |
+
+### PIEAR (0x0020)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0xffffffff|PIEAR| |
+
+### CONFIG (0x0024)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x00000001|SYSRSTB| |
+|0x00000002|MEMRSTB| |
+|0x00000004|DIRSTB| |
+|0xfffffff8|PICFG| |
+
+### DURAR (0x0028)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x000003ff|PIRDR| |
+|0xfffffc00|Unused| |
+
+### CHIPID (0x002C)
+
+### STRGTH (0x0030)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x00000007|AI_STR| |
+|0x00000038|AIS_STR| |
+|0x000001c0|SI_STR| |
+|0x00000e00|EXI2_STR| |
+|0x00007000|EXI1_STR| |
+|0x00038000|EXI0_STR| |
+|0x001c0000|DI_STR| |
+|0x00e00000|VI_STR| |
+
+### CPUDBB (0x0034)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x00000001|DBB| |
+|0xfffffffe|Unused| |
+
+### PI CP FIFO Registers
+
+### PI FIFO Base (CPBAS, 0x000C)
 
 |Bits|Name|Meaning|
 |----|----|-------|
@@ -63,7 +156,7 @@ Burst transactions are used for the following purposes:
 |26:5|BASE|The value to write Wrptr after the PI FIFO overflow (when Wrptr becomes Top).|
 |4:0|0|Zeroes|
 
-### PI FIFO Top (0x0C003010)
+### PI FIFO Top (CPTOP, 0x0010)
 
 |Bits|Name|Meaning|
 |----|----|-------|
@@ -71,7 +164,7 @@ Burst transactions are used for the following purposes:
 |26:5|TOP|Monitors PI FIFO overflow. When Wrptr becomes Top, Wrptr is reset to Base.|
 |4:0|0|Zeroes|
 
-### PI FIFO Write Pointer (0x0C003014)
+### PI FIFO Write Pointer (CPWRT, 0x0014)
 
 |Bits|Name|Meaning|
 |----|----|-------|
@@ -79,3 +172,10 @@ Burst transactions are used for the following purposes:
 |27|WRAP|Set to `1` after Wrptr becomes equal to the value of Top. When is it reset?|
 |26:5|WRPTR|The current address for writing the next 32 bytes of FIFO data. Writing is made when the processor performs a burst transaction at the address 0x0C008000. After write, the value is increased by 32. When the value becomes equal to Top, Wrptr is set to Base and the Wrap bit is set.|
 |4:0|0|Zeroes|
+
+### PI FIFO Abort (CPABT, 0x0018)
+
+|Bit Mask|Name|Meaning|
+|---|---|---|
+|0x00000001|CPABT| |
+|0xfffffffe|Unused| |

@@ -168,13 +168,13 @@ More description can be found in US6717577 "VERTEX CACHE FOR 3D COMPUTER GRAPHIC
 ### Internal State Registers
 
 GX state stored in 3 sets of registers:
-- CP Regs
-- XF Regs
-- So-called "ByPass" (BP) address space Regs. They are called ByPass, because they are accessed bypassing the vertex transformation unit (XF)
+- CP Registers
+- XF Registers
+- So-called "ByPass" (BP) address space Registers. They are called ByPass, because they are accessed bypassing the vertex transformation unit (XF)
 
 Writing to registers is performed by special FIFO commands. Partially CP registers are mapped to CPU physical memory.
 
-### CP Regs
+### CP Registers
 
 |Register name|Register address [7:0]|Bit fields|
 |---|---|---|
@@ -293,7 +293,7 @@ Vertex Command Descriptor (VCD) settings:
 
 TBD.
 
-### XF Regs
+### XF Registers
 
 TBD.
 
@@ -345,6 +345,6 @@ TBD.
 
 TBD.
 
-## BP Address Space Regs
+## BP Address Space Registers
 
 TBD.
