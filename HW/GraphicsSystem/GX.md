@@ -170,7 +170,7 @@ More description can be found in US6717577 "VERTEX CACHE FOR 3D COMPUTER GRAPHIC
 GX state stored in 3 sets of registers:
 - CP Regs
 - XF Regs
-- So-called "ByPass" (BP) address space Regs. They are called ByPass, most likely because they are accessed bypassing the vertex transformation unit (XF)
+- So-called "ByPass" (BP) address space Regs. They are called ByPass, because they are accessed bypassing the vertex transformation unit (XF)
 
 Writing to registers is performed by special FIFO commands. Partially CP registers are mapped to CPU physical memory.
 
@@ -188,7 +188,7 @@ Writing to registers is performed by special FIFO commands. Partially CP registe
 |				|		 |17:12 index for tex6 matrix|
 |				|		 |23:18 index for tex7 matrix|
 |VCD_Lo 		|0101xxxx|16:00 VCD 12 to 0|
-|				|		 |0 PosMatIdx|
+|				|		 |0 PosNrmMatIdx|
 |				|		 |1 Tex0MatIdx|
 |				|		 |2 Tex1MatIdx|
 |				|		 |3 Tex2MatIdx|
@@ -199,8 +199,8 @@ Writing to registers is performed by special FIFO commands. Partially CP registe
 |				|		 |8 Tex7MatIdx|
 |				|		 |10:9 Position|
 |				|		 |12:11 Normal|
-|				|		 |14:13 ColorDiffused|
-|				|		 |16:15 ColorSpecular|
+|				|		 |14:13 ColorDiffused (Color0)|
+|				|		 |16:15 ColorSpecular (Color1)|
 |VCD_Hi			|0110xxxx|15:00 VCD 20 to 13|
 |				|		 |01:00 Tex0Coord|
 |				|		 |03:02 Tex1Coord|
@@ -216,14 +216,14 @@ Writing to registers is performed by special FIFO commands. Partially CP registe
 |				|				|16:13 ColorDiffused parameters|
 |				|				|20:17 ColorSpecular parameters|
 |				|				|29:21 Tex0Coord parameters|
-|				|				|30:30 ByteDequant|
+|				|				|30:30 ByteDequant (must always be 1)|
 |				|				|31:31 Normalindex3|
 |VAT_group1		|1000x,vat[2:0]	|32 bits|
 |				|				|08:00 Tex1Coord parameters|
 |				|				|17:09 Tex2Coord parameters|
 |				|				|26:18 Tex3Coord parameters|
 |				|				|30:27 Tex4Coord parameters sub-field[3:0]|
-|				|				|31 unused|
+|				|				|31 VcacheEnhance (must always be 1)|
 |VAT_group2		|1001x,vat[2:0]	|32 bits|
 |				|				|04:00 Tex4Coord parameters sub-field[8:4]|
 |				|				|13:05 Tex5Coord parameters|
@@ -256,6 +256,38 @@ Values for array[3:0] for ArrayBase and ArrayStride:
 |1101|IndexRegB base/stride register|
 |1110|IndexRegC base/stride register|
 |1111|IndexRegD base/stride register|
+
+For indexed attributes, the indexed attribute address is calculated as follows:
+
+```
+MemoryAddress=ArrayBase[I] + index * ArrayStride[I]
+```
+
+Vertex Command Descriptor (VCD) settings:
+
+|Attribute number|Attribute name|bits|Encoding|
+|---|---|---|---|
+|0|PosMatIdx|0|Position/normal matrix index. Always direct if present. 0: not present 1: present. NOTE: position and normal matrices are stored in 2 separate RAMs in the Xform unit, but there is a one to one correspondence between normal and position index. If index "A" is used for the position, then index "A" needs to be used for the normal as well.|
+|1|Tex0MatIdx|1|TextCoord0 matrix index, always direct if present. 0: not present 1: present|
+|2|Tex1MatIdx|2|TextCoord1 matrix index, always direct if present. 0: not present 1: present|
+|3|Tex2MatIdx|3|TextCoord2 matrix index, always direct if present. 0: not present 1: present|
+|4|Tex3MatIdx|4|TextCoord3 matrix index, always direct if present. 0: not present 1: present|
+|5|Tex4MatIdx|5|TextCoord4 matrix index, always direct if present. 0: not present 1: present|
+|6|Tex5MatIdx|6|TextCoord5 matrix index, always direct if present. 0: not present 1: present|
+|7|Tex6MatIdx|7|TextCoord6 matrix index, always direct if present. 0: not present 1: present|
+|8|Tex7MatIdx|8|TextCoord7 matrix index, always direct if present. 0: not present 1: present|
+|9|Position|10:9|00: reserved, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|10|Normal|12:11|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|11|Color0|14:13|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|12|Color1|16:15|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|13|Tex0Coord|18:17|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|14|Tex1Coord|20:19|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|15|Tex2Coord|22:21|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|16|Tex3Coord|24:23|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|17|Tex4Coord|26:25|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|18|Tex5Coord|28:27|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|19|Tex6Coord|30:29|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
+|20|Tex7Coord|32:31|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
 
 ## Transform Unit (XF)
 
