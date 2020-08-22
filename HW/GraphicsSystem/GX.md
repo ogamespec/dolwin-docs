@@ -289,6 +289,8 @@ Vertex Command Descriptor (VCD) settings:
 |19|Tex6Coord|30:29|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
 |20|Tex7Coord|32:31|00: not present, 01: direct, 10: 8 bit index, 11: 16 bit index|
 
+If the index is 0xFF for 8-bit indexes or 0xFFFF for 16-bit indexes, then the vertex with that index is skipped.
+
 ## Transform Unit (XF)
 
 TBD.
