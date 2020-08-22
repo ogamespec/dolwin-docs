@@ -72,7 +72,8 @@ Mapped at 0x0C003000 physical address. 32-bit access.
 |0x00000400|PEINT1| |
 |0x00000800|CPINT| |
 |0x00001000|DBGINT| |
-|0x0000e000|Unused| |
+|0x00002000|SDINT| |
+|0x0000c000|Unused| |
 |0x00010000|RSTVAL| |
 |0xfffe0000|Unused| |
 
@@ -93,7 +94,8 @@ Mapped at 0x0C003000 physical address. 32-bit access.
 |0x00000400|PEMSK1| |
 |0x00000800|CPMSK| |
 |0x00001000|DBGMSK| |
-|0xffffe000|Unused| |
+|0x00002000|SDMSK| |
+|0xffffc000|Unused| |
 
 ### PIESR (0x001C)
 
