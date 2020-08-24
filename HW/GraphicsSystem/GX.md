@@ -318,8 +318,8 @@ Vertex Attribute Table (VAT) settings:
 
 |Register Address|Definition|Configuration|
 |---|---|---|
-|0x0000|Position Matrix Ram word 0|32b matrix data|
-|0x0001-0x00ff|Position Matrix Ram word (n)|32b matrix data|
+|0x0000|ModelView/Texture Matrix Ram word 0|32b matrix data|
+|0x0001-0x00ff|ModelView/Texture Matrix Ram word (n)|32b matrix data|
 |0x0100-0x03ff|Not used| |
 |0x0400-0x402|Normal Ram words 0,1,2|20b data|
 |0x0403-0x045f|Normal Ram word (n)|20b data|
