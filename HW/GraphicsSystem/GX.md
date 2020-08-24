@@ -291,13 +291,51 @@ Vertex Command Descriptor (VCD) settings:
 
 If the index is 0xFF for 8-bit indexes or 0xFFFF for 16-bit indexes, then the vertex with that index is skipped.
 
+Vertex Attribute Table (VAT) settings:
+
+|Bit field|Attribute number|Attribute name|.CompCount sub-field(0)|.CompSize sub-field(3:1)|.Shift amount sub-field(8:4)|
+|---|---|---|---|---|---|
+|8:0|9|Position|0: two (x,y), 1: three (x,y,z)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB. This shift applies to all u/short components and to u/byte components where ByteDequant is asserted (Below).|
+|12:9|10|Normal|0: three normals, 1: nine normals|0:reserved, 1:byte, 2:reserved, 3:short, 4:float, 5-7: reserved|NA (Byte: 6, Short: 14)|
+|16:13|11|Color0|0: three (r,g,b), 1: four (r,g,b,a)|0: 16 bit 565 (three comp), 1: 24 bit 888 (three comp), 2: 32 bit 888x (three comp), 3: 16 bit 4444 (four comp), 4: 24 bit 6666 (four comp), 5: 32 bit 8888 (four comp)|NA|
+|20:17|12|Color1|0: three (r,g,b), 1: four (r,g,b,a)|0: 16 bit 565 (three comp), 1: 24 bit 888 (three comp), 2: 32 bit 888x (three comp), 3: 16 bit 4444 (four comp), 4: 24 bit 6666 (four comp), 5: 32 bit 8888 (four comp)|NA|
+|29:21|13|Tex0Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|38:30|14|Tex1Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|47:39|15|Tex2Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|56:48|16|Tex3Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|65:57|17|Tex4Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|74.66|18|Tex5Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|83:75|19|Tex6Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|92.84|20|Tex7Coord|0: one (s), 1: two (s,t)|0:ubyte, 1:byte, 2:ushort, 3:short, 4:float, 5-7: reserved|Location of decimal point from LSB (ByteDequant, see below)|
+|93.93|FLAG|ByteDequant|(Rev B Only)|0: Shift does not apply to u/byte and u/short, 1: Shift does apply to u/byte and u/short|Shift applies for u/byte and u/short components of position and texture attributes.|
+|94:94|FLAG|Normal Index3|(Rev B Only)|0: Single index per Normal, 1: Triple index per nine Normal|When nine normals selected in indirect mode, input will be treated as three staggered indices (one per triple biased by component size), into normal table. NOTE! First index internally biased by 0. Second index internally biased by 1. Third index internally biased by 2.|
+
 ## Transform Unit (XF)
 
-TBD.
+![XF_Block_Diagram](XF_Block_Diagram.png)
 
 ### XF Registers
 
-TBD.
+|Register Address|Definition|Configuration|
+|---|---|---|
+|0x0600|Reserved| |
+|0x0601|Reserved| |
+|0x0602|Reserved| |
+|0x0603|Light0|32b: RGBA (8b/comp)|
+|0x0604|Light0A0|20b: cos atten. A0|
+|0x0605|Light0A1|20b: cos atten. A1|
+|0x0606|Light0A2|20b: cos atten. A2|
+|0x0607|Light0K0|20b: dist atten. K0|
+|0x0608|Light0K1|20b: dist atten. K1|
+|0x0609|Light0K2|20b: dist atten. K2|
+|0x060a|Light0Lpx|20b: x light pos, or inf ldir x|
+|0x060b|Light0Lpy|20b: y light pos, or inf ldir y|
+|0x060c|Light0Lpz|20b: z light pos, or inf ldir z|
+|0x060d|Light0Dx/Hx|20b: light dir x, or 1/2 angle x|
+|0x060e|Light0Dy/Hy|20b: light dir y, or 1/2 angle y|
+|0x060f|Light0Dz/Hz|20b: light dir z, or 1/2 angle z|
+|0x0610-0x067f|Light(n) data|Parameters for Light1-Light7. See Light0 data|
+|0x0680-0x07ff|Not used|Reserved|
 
 ## Setup/Rasterizers (SU/RAS)
 
