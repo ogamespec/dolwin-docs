@@ -318,6 +318,14 @@ Vertex Attribute Table (VAT) settings:
 
 |Register Address|Definition|Configuration|
 |---|---|---|
+|0x0000|Position Matrix Ram word 0|32b matrix data|
+|0x0001-0x00ff|Position Matrix Ram word (n)|32b matrix data|
+|0x0100-0x03ff|Not used| |
+|0x0400-0x402|Normal Ram words 0,1,2|20b data|
+|0x0403-0x045f|Normal Ram word (n)|20b data|
+|0x0460-0x04ff|Not used| |
+|0x0500|Dual-texture transform Matrix Ram word 0|32b matrix data|
+|0x0501-0x05ff|Dual-texture transform Matrix Ram word (n)|32b matrix data|
 |0x0600|Reserved| |
 |0x0601|Reserved| |
 |0x0602|Reserved| |
@@ -336,6 +344,57 @@ Vertex Attribute Table (VAT) settings:
 |0x060f|Light0Dz/Hz|20b: light dir z, or 1/2 angle z|
 |0x0610-0x067f|Light(n) data|Parameters for Light1-Light7. See Light0 data|
 |0x0680-0x07ff|Not used|Reserved|
+|0x1000|Error| |
+|0x1001|Diagnostics| |
+|0x1002|State0|Internal state register0|
+|0x1003|State1|Internal state register1|
+|0x1004|Xf_clock|Enables power saving mode. 0: No power saving when idle, 1: Enable power saving when idle|
+|0x1005|ClipDisable|Disables some or all of clipping. B[0]: When set, disables clipping detection (0 default), B[1]: When set, disables trivial rejection (0 default), B[2]: When set, disables cpoly clipping acceleration (0 default)|
+|0x1006|Perf0|Performance monitor selects|
+|0x1007|Perf1|Xform target performance register: [6:0]: Xform internal target performance (Cycles/vertex)|
+|0x1008|InVertexSpec|B[1:0]: Specifies host supplied color0 usage: 0: No host supplied color information 1: Host supplied color0 2: Host supplied color0 and color1; B[3:2]: Specifies host supplied normal: 0: No host supplied normal 1: Host supplied normal 2: Host supplied normal and binormals; B[7:4]: Specifies # of host supplied texture coordinates 0: No host supplied textures 1: 1 host supplied texture pair (S0, T0) 2-8: 2-8 host supplied texturepairs; 9-15: Reserved|
+|0x1009|NumColors|Specifies the number of colors to output: 0: No xform colors active, 1: Xform supplies 1 color (host supplied or computed), 2: Xform supplies 2 colors (host supplied or computed)|
+|0x100a|Ambient0|32b: RGBA (8b/comp) Ambient color0 specifications|
+|0x100b|Ambient1|32b: RGBA (8b/comp) Ambient color1 specifications|
+|0x100c|Material0|32b: RGBA (8b/comp) global color0 material specifications|
+|0x100d|Material1|32b: RGBF (8b/comp) global color1 material specifications|
+|0x100e|Color0Cntrl|B[0]: Color0 Material source 0: Use register (Material 0) 1: Use CP supplied Vertex color 0; B[1]: Color0 LightFunc 0: Use 1.0 1: Use Illum0; B[2]: Light0 is source 0: Do not use light 1: Use light; B[3]: Light1 is source 0: Do not use light 1: Use light; B[4]: Light2 is source 0: Do not use light 1: Use light; B[5]: Light3 is source 0: Do not use light 1: Use light; B[6]: Ambient source 0: Use register Ambient0 register 1: Use CP supplied vertex color 0; B[8:7]: DiffuseAtten function 0: Select 1.0 1: Select N.L, signed 2: Select N.L clamped to [0,1.0]; B[9]: AttenEnable function 0: Select 1.0 1: Select Attenuation fraction; B[10]: AttenSelect function 0: Select specular (N.H) attenuation 1: Select diffuse spotlight (L.Ldir) attenuation; B[11]: Light4 is source 0: Do not use Light 1: Use light; B[12]: Light 5 is source 0: Do not use Light 1: Use light; B[13]: Light 6 is source 0: Do not use Light 1: Use light; B[14]: Light 7 is source 0: Do not use Light 1: Use light|
+|0x100f|Color1Cntrl|B[0]: Color Material source 0: Use register (Material 1) 1: Use CP supplied Vertex color 1; B[1]: Color1 LightFunc 0: Use 1.0 1: Use Illum1; B[2]: Light0 is source 0: Do not use light 1: Use light; B[3]: Light1 is source 0: Do not use light 1: Use light; B[4]: Light2 is source 0: Do not use light 1: Use light; B[5]: Light3 is source 0: Do not use light 1: Use light; B[6]: Ambient source 0: Use register Ambient1 register 1: Use CP supplied vertex color 1; B[8,7]: DiffuseAtten function 0: Select 1.0 1: Select N.L, signed 2: Select N.L clamped to [0,1.0]; B[9]: AttenEnable function 0: Select 1.0 1: Select Attenuation fraction; B[10]: AttenSelect function 0: Select specular (N.H) attenuation 1: Select diffuse spotlight (L.Ldir) attenuation; B[11]: Light4 is source 0: Do not use Light 1: Use light; B[12]: Light 5 is source 0: Do not use light 1: Use light; B[13]: Light 6 is source 0: Do not use light 1: Use light; B[14]: Light7 is source 0: Do not use light 1: Use light|
+|0x1010|Alpha0Cntrl|B[0]: Color0 alpha Material source 0: Use register (Material 0 alpha) 1: Use CP supplied Vertex color 0 alpha; B[1]: Color0 alpha Light Func 0: Use 1.0 1: Use Illum0; B[2]: Light0 alpha is source 0: Do not use light 1: Use light; B[3]: Light1 alpha is source 0: Do not use light 1: Use light; B[4]: Light2 alpha is source 0: Do not use light 1: Use light; B[5]: Light 3 alpha is source 0: Do not use light 1: Use light; B[6]: Ambient source 0: Use register Ambient0 alpha register 1: Use CP supplied vertex color 0 alpha; B[8:7]: DiffuseAtten function 0: Select 1.0 1: Select N.L, signed 2: Select N.L clamped to [0,1.0]; B[9]: AttenEnable function 0: Select 1.0 1: Select Attenuation fraction; B[10]: AttenSelect function 0: Select specular (N.H) attenuation 1: Select diffuse spotlight (L.Ldir) attenuation; B[11]: Light4 is source 0: Do not use Light 1:Use light; B[12]: Light 5 is source 0: Do not use Light 1: Use Light; B[13]: Light 6 is source 0: Do not use Light 1: Use light; B[14]: Light 7 is source 0: Do not use Light 1: Use light|
+|0x1011|Alpha1Cntrl|B[0]: Color1 alpha Material source 0: Use CP supplied Vertex color 1 alpha; B[1]: Color1 alpha LightFunc 0: Use 1.0 1: Use Illum0; B[2]: Light0 alpha is source 0: Do not use light 1: Use light; B[3]: Light1 alpha is source 0: Do not use light 1: Use light; B[4]: Light2 alpha is source 0: Do not use light 1: Use light; B[5]: Light3 alpha is source 0: Do not use light 1: Use light; B[6]: Ambient source 0: Use register Ambient1 alpha register 1: Use CP supplied vertex color 1 alpha; B[8:7]: DiffuseAtten function 0: Select 1.0 1: Select N.L, signed 2: Select N.L clamped to [0,2.0]; B[9]: AttenEnable function 0: Select 1.0 1: Se]ect Attenuation fraction; B[10]: AttenSelect function 0: Select specular (N.H) attenuation 1: Select diffuse spotlight (L.Ldir) attenuation; B[11]: Light 4 is source 0: Do not use Light 1: Use light; B[12]: Light 5 is source 0: Do not use Light 1: Use light; B[13]: Light 6 is source 0: Do not use Light 1: Use light; B[14]: Light 7 is source 0: Do not use Light 1: Use light|
+|0x1012|DualTexTran|B[0]: When set(1), enables dual transform for all texture coordinates. When reset (0), disables dual texture transform feature [rev B]|
+|0x1018|MatrixIndex0|B[5:0]: Geometry matrix index; B[11:6]: Tex0 matrix index; B[17:12]: Tex1 matrix index; B[23:18]: Tex2 matrix index; B[29:24]: Tex3 matrix index|
+|0x1019|MatrixIndex1|B[5:0]: Tex4 matrix index; B[11:6]: Tex5 matrix index; B[17:12]: Tex6 matrix index; B[23:18]: Tex7 matrix index|
+|0x101a|ScaleX|Viewport scale X|
+|0x101b|ScaleY|Viewport scale Y|
+|0x101c|ScaleZ|Viewport scale Z|
+|0x101d|OffsetX|Viewport offset X|
+|0x101e|OffsetY|Viewport offset Y|
+|0x101f|OffsetZ|Viewport offset Z|
+|0x1020|ProjectionA|A parameter in projection equations|
+|0x1021|ProjectionB|B parameter in projection equations|
+|0x1022|ProjectionC|C parameter in projection equations|
+|0x1023|ProjectionD|D parameter in projection equations|
+|0x1024|ProjectionE|E parameter in projection equations|
+|0x1025|ProjectionF|F parameter in projection equations|
+|0x1026|ProjectOrtho|If set selects orthographic otherwise non-orthographic (Zh or 1.0 select)|
+|0x103f|NumTex|Number of active textures|
+|0x1040|Tex0| B0: Reserved; B1: texture projection 0: (s,t): texmul is 2x4 1: (s,t,q): texmul is 3x4; B2: input form (format of source input data for regular textures) 0: (A, B, 1.0, 1.0) (used for regular texture source) 1: (A, B, C, 1.0) (used for geometry or normal source); B[3]: Reserved; B[6,4]: texgen type 0: Regular transformation (transform incoming data) 1: texgen bump mapping 2: Color texgen: (s,t)=(r,g:b) (g and b are concatenated), color0 3: Color texgen: (s,t)=(r,g:b) (g and b are concatenated), color 1; B[11:7]: regular texture source row: Specifies location of incoming textures in vertex (row specific) (i.e.: geometry is row0, normal is row1, etc . . . ) for regular transformations (refer to the table below); B[14:12]: bump mapping source texture: n: use regular transformed tex(n) for bump mapping source; B[17:15]: Bump mapping source light: n: use light #n for bump map direction source (10 to 17)|
+|0x1041|Tex1|See Tex0|
+|0x1042|Tex2|See Tex0|
+|0x1043|Tex3|See Tex0|
+|0x1044|Tex4|See Tex0|
+|0x1045|Tex5|See Tex0|
+|0x1046|Tex6|See Tex0|
+|0x1047|Tex7|See Tex0|
+|0x1050|DualTex0|B[5:0]: Indicates which is the base row of the dual transform matrix for regular texture coordinate0. [Rev B]; B[7:6]: Not used; B[8]: specifies if texture coordinate should be normalized before send transform.|
+|0x1051|DualTex1|See DualTex0|
+|0x1052|DualTex2|See DualTex0|
+|0x1053|DualTex3|See DualTex0|
+|0x1054|DualTex4|See DualTex0|
+|0x1055|DualTex5|See DualTex0|
+|0x1056|DualTex6|See DualTex0|
+|0x1057|DualTex7|See DualTex0|
 
 ## Setup/Rasterizers (SU/RAS)
 
