@@ -1,6 +1,6 @@
-# Project Dolwin (IPL Replacement): Bootstrap Stage (BS).
+# Bootstrap Stage1 (BS1).  (NTSC version)
 
-# Brief runflow of boot stage execution:
+# Brief runflow of boot stage 1 execution:
 #
 #   - Init Flipper (ARAM, MI, reset DVD).
 #   - Init Gekko (enable cache, set Dolphin OS memory model, enable translation).
@@ -84,12 +84,12 @@ boot:
 # DBAT0: 80001FFF 00000002    Write-back cached main memory, 256MB block.
 # DBAT1: C0001FFF 0000002A    Cache inhibited, Guarded, 256MB block.
 # DBAT2: 00000000 xxxxxxxx    Dont care, reserved.
-# DBAT3: FFF0001F FFF00001    Bootrom, 1MB block (temporary for BS)
+# DBAT3: FFF0001F FFF00001    Bootrom, 1MB block (temporary for BS1)
 #
 # IBAT0: 80001FFF 00000002    Write-back cached main memory, 256MB block.
 # IBAT1: 00000000 xxxxxxxx    Dont care, reserved.
 # IBAT2: 00000000 xxxxxxxx    Dont care, reserved.
-# IBAT3: FFF0001F FFF00001    Cache inhibited, Guarded, Bootrom, 1MB block (temporary for BS)
+# IBAT3: FFF0001F FFF00001    Cache inhibited, Guarded, Bootrom, 1MB block (temporary for BS1)
         lis         r4, 0x0000
         addi        r4, r4, 2
         lis         r3, 0x8000
@@ -124,18 +124,18 @@ boot:
         mtmsr       r4
         isync
 
-# Write 0x0245248A to 0x3030 register. Meaning is unknown. Register is unknown.
+# Write 0x0245248A to PI STRGTH register.
         lis         r3, 0xCC00
         ori         r3, r3, 0x3000
         lis         r4, 0x0245
         ori         r4, r4, 0x248A
-        stw         r4, 48 (r3)         # Write 0x0245248A to 0x3030 register.
+        stw         r4, 48 (r3)         # Write 0x0245248A to PI STRGTH register.
 
-# Reset DVD, through PI reset register.
-        lwz         r4, 36 (r3)         # Read PI reset register.
+# Reset DVD (?), through PI CONFIG register.
+        lwz         r4, 36 (r3)         # Read PI CONFIG register.
         ori         r4, r4, 0x0001
         rlwinm      r4, r4, 0, 31, 28   # Set bit 31, clear bit 29.
-        stw         r4, 36 (r3)         # Write new value in reset register.
+        stw         r4, 36 (r3)         # Write new value in CONFIG register.
         mftb        r5, TBL
 WaitDVDReset:        
         mftb        r6, TBL
@@ -143,7 +143,7 @@ WaitDVDReset:
         cmplwi      r7, 4388
         blt+        WaitDVDReset        # Wait ~9 us (with 486MHz clock)
         ori         r4, r4, 0x0003      # Set bit 31, set bit 29.
-        stw         r4, 36 (r3)         # Write new value in reset register.
+        stw         r4, 36 (r3)         # Write new value in CONFIG register.
 
 # Allow 32MHz EXI clock setting by CPU.
         lis         r14, 0xCC00
@@ -238,7 +238,8 @@ AD16Write:
         beq+        DoAD16Write  
         blr
 
-# Trace step 0x01 - Nothing ?
+# Trace step 0x01 - Nothing?
+# TODO: PAL version contains some code here
 Trace_01:
         lis         r15, 0x0100         # AD16 = 0x01000000
         bl          AD16Write
@@ -253,7 +254,8 @@ Trace_01:
         .word       0
         .word       0
 
-# Trace step 0x02 - Nothing ?
+# Trace step 0x02 - Nothing?
+# TODO: PAL version contains some code here
 Trace_02:
         nop
         nop
@@ -538,7 +540,7 @@ StartExecuteIPL:
         .word       0
         .word       0
 
-# This how may look BS from the scratch.. Actual code fills zeroed words.
+# This how may look BS1 from the scratch.. Actual code fills zeroed words.
 Padding:
 Jump_25:
         b           Jump_26
@@ -605,8 +607,8 @@ Jump_31:
         .word       0
 
 # Note by tmbinc:
-# Why BS is jumping around? The jumping is because the way the instructions are
+# Why BS1 is jumping around? The jumping is because the way the instructions are
 # fetched. They must be fetched in exact linear order, otherwise the scrambling
-# goes out of sync. So in order to do any loops, BS enable the icache and 
+# goes out of sync. So in order to do any loops, BS1 enable the icache and 
 # to fill the icache, its jump to the first location in each icache line.
-# That's why BS jump in 0x20 byte steps.
+# That's why BS1 jump in 0x20 byte steps.
