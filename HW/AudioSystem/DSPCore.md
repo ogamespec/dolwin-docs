@@ -444,7 +444,7 @@ eas <- ea
 The maximum nesting loop is 4.
 
 The logic behind the loop is as follows:
-- If pc is equal to eas then lcs = lcs - 1. If after that lcs is not equal to zero, then pc = pcs. Otherwise pc = pc + 1 (exit the loop);
+- If pc is equal to eas then lcs = lcs - 1. If after that lcs is not equal to zero, then pc = pcs. Otherwise pop pcs/eas/lcs and pc = pc + 1 (exit the loop);
 - If the parameter lc = 0, then accordingly no loop occurs, pc = end_address + 1 (the block is skipped)
 
 Checking the current pc for loop is done only if the eas/lcs stack is not empty (eas and lcs stacks share a common stack pointer).
