@@ -1715,7 +1715,7 @@ d = d | s
 ### or (Form 2)
 
 |d|Dest|Source|
-|---|---|
+|---|---|---|
 |0|a1|b1|
 |1|b1|a1|
 
@@ -1747,7 +1747,7 @@ else
 ### lsf (Parallel Form 2)
 
 |d|Dest|Source|
-|---|---|
+|---|---|---|
 |0|a|b1|
 |1|b|a1|
 
@@ -1779,7 +1779,7 @@ else
 ### asf (Parallel Form 2)
 
 |d|Dest|Source|
-|---|---|
+|---|---|---|
 |0|a|b1|
 |1|b|a1|
 
