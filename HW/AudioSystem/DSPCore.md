@@ -363,8 +363,6 @@ else PC = PC + 1;
 
 ### call
 
-The instruction is actually called `call`, but I've renamed it for clarity.
-
 ```
 if (Condition() == true)
 {
@@ -375,6 +373,8 @@ else PC = PC + 2;
 ```
 
 ### callr
+
+The instruction is actually called `call`, but I've renamed it for clarity.
 
 rn parameter is same as jmpr.
 
@@ -435,11 +435,25 @@ else
 
 ### loop
 
-TBD.
+```
+pcs <- pc+2 (end_address parameter skip)
+lcs <- lc
+eas <- ea
+```
+
+The maximum nesting loop is 4.
+
+The logic behind the loop is as follows:
+- If pc is equal to eas then lcs = lcs - 1. If after that lcs is not equal to zero, then pc = pcs. Otherwise pc = pc + 1 (exit the loop);
+- If the parameter lc = 0, then accordingly no loop occurs, pc = end_address + 1 (the block is skipped)
+
+Checking the current pc for loop is done only if the eas/lcs stack is not empty (eas and lcs stacks share a common stack pointer).
 
 ### loopr
 
-TBD.
+The instruction is actually called `loop`, but I've renamed it for clarity.
+
+Same as `loop`, but lc is taken from register.
 
 ### rep
 
@@ -1651,20 +1665,219 @@ x1 * y1: signed * signed
 
 ### ldd
 
+```
+d1 = (rn)
+rn = rn + (1 or mn)
+
+d2 = (r3)
+r3 = r3 + (1 or m3)
+```
+
+|rr|rn|r3|
+|---|---|---|
+|00|r0|r3|
+|01|r1|r3|
+|10|r2|r3|
+
+|dd|d1|d2|
+|---|---|---|
+|00|x0|y0|
+|01|x0|y1|
+|10|x1|y0|
+|11|x1|y1|
+
+|n (mn)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
+|m (m3)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
 ### ldd2
 
 The instruction is actually called `ldd`, but I've renamed it for clarity.
 
+|r|rn|r3|
+|---|---|---|
+|0|r0|r3|
+|1|r1|r3|
+
+|d|d1|d2|
+|---|---|---|
+|0|x1|x0|
+|1|y1|y0|
+
+|n (mn)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
+|m (m3)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
 ### ls
+
+Load by r0, store by r3.
+
+```
+d = (r0)
+r0 = r0 + (1 or m0)
+(r3) = s
+r3 = r3 + (1 or m3)
+```
+
+|d|Register|
+|---|---|
+|00|x0|
+|01|y0|
+|10|x1|
+|11|y1|
+
+|s|XL=1|XL=0|
+|---|---|---|
+|0|a|a1|
+|1|b|b1|
+
+|n (m0)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
+|m (m3)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
 
 ### ls2
 
 The instruction is actually called `ls`, but I've renamed it for clarity.
 
+Load by r3, store by r0.
+
+```
+d = (r3)
+r3 = r3 + (1 or m3)
+(r0) = s
+r0 = r0 + (1 or m0)
+```
+
+|d|Register|
+|---|---|
+|00|x0|
+|01|y0|
+|10|x1|
+|11|y1|
+
+|s|XL=1|XL=0|
+|---|---|---|
+|0|a|a1|
+|1|b|b1|
+
+|n (m0)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
+|m (m3)|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
 ### ld
+
+```
+d = (rn)
+rn = rn + (1 or mn)
+```
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+|mn|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
+|d|Register|
+|---|---|
+|000|x0|
+|001|y0|
+|010|x1|
+|011|y1|
+|100|a0|
+|101|b0|
+|110|XL=1: a, XL=0: a1|
+|111|XL=1: b, XL=0: b1|
 
 ### st
 
+```
+(rn) = s
+rn = rn + (1 or mn)
+```
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
+
+|mn|Meaning|
+|---|---|
+|0|+1|
+|1|+m|
+
+|s|Register|
+|---|---|
+|00|a0|
+|01|b0|
+|10|XL=1: a1, XL=0: a|
+|11|XL=1: b1, XL=0: b|
+
 ### mv (Parallel)
 
+d = s
+
+|d|Register|
+|---|---|
+|00|x0|
+|01|y0|
+|10|x1|
+|11|y1|
+
+|s|Register|
+|---|---|
+|00|a0|
+|01|b0|
+|10|XL=1: a1, XL=0: a|
+|11|XL=1: b1, XL=0: b|
+
 ### mr (Parallel)
+
+```
+rn = rn + (+0 or -1 or +1 or +mn)
+```
+
+|mn|Meaning|
+|---|---|
+|00|+0|
+|01|-1|
+|10|+1|
+|11|+m|
+
+|rn|Register|
+|---|---|
+|00|r0|
+|01|r1|
+|10|r2|
+|11|r3|
