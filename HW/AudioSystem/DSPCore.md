@@ -1457,8 +1457,8 @@ PSR.XL = 1
 |1010|b1|x1|
 |1011|b1|y1|
 
-IM=1 (integer mode): p = s1 * s2
-IM=0 (fraction mode): p = s1 * (2 * s2)
+- IM=1 (integer mode): p = s1 * s2
+- IM=0 (fraction mode): p = s1 * (2 * s2)
 
 When DP=1:
 
@@ -1482,8 +1482,8 @@ Same as Form 1, but s1 = s2 = x1.
 |10|x1|y0|
 |11|x1|y1|
 
-IM=1 (integer mode): p = s1 * s2 + p
-IM=0 (fraction mode): p = s1 * (2 * s2) + p
+- IM=1 (integer mode): p = s1 * s2 + p
+- IM=0 (fraction mode): p = s1 * (2 * s2) + p
 
 ```
 [p2] [p1] [p0] = s1 * s2 + [p2] [p1] [p0]
@@ -1516,8 +1516,8 @@ Differs from `mac` instruction in that s1 parameter is minus sign.
 |10|x1|y0|
 |11|x1|y1|
 
-IM=1 (integer mode): p = -s1 * s2 + p
-IM=0 (fraction mode): p = -s1 * (2 * s2) + p
+- IM=1 (integer mode): p = -s1 * s2 + p
+- IM=0 (fraction mode): p = -s1 * (2 * s2) + p
 
 ```
 [p2] [p1] [p0] = -s1 * s2 + [p2] [p1] [p0]
@@ -1561,8 +1561,8 @@ Differs from `mpy` instruction in that product is pre-stored in register a/b.
 |0|a|
 |1|b|
 
-IM=1 (integer mode): d = p; p = s1 * s2
-IM=0 (fraction mode): d = p; p = s1 * (2 * s2)
+- IM=1 (integer mode): d = p; p = s1 * s2
+- IM=0 (fraction mode): d = p; p = s1 * (2 * s2)
 
 When DP=1:
 
@@ -1593,8 +1593,8 @@ x1 * y1: signed * signed
 |0|a|
 |1|b|
 
-IM=1 (integer mode): d = Rnd(p); p = s1 * s2
-IM=0 (fraction mode): d = Rnd(p); p = s1 * (2 * s2)
+- IM=1 (integer mode): d = Rnd(p); p = s1 * s2
+- IM=0 (fraction mode): d = Rnd(p); p = s1 * (2 * s2)
 
 Convergent rounding method used (see `rnd` instruction).
 
@@ -1627,8 +1627,8 @@ x1 * y1: signed * signed
 |0|a|
 |1|b|
 
-IM=1 (integer mode): d = d + p; p = s1 * s2
-IM=0 (fraction mode): d = d + p; p = s1 * (2 * s2)
+- IM=1 (integer mode): d = d + p; p = s1 * s2
+- IM=0 (fraction mode): d = d + p; p = s1 * (2 * s2)
 
 When DP=1:
 
