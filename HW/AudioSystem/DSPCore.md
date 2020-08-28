@@ -1393,7 +1393,7 @@ a = a >> 16 		// Logic shift
 |1|b|
 
 ```
-a = a >>A 16 		// Arithmetic shift (propagate msb)
+a = a >>> 16 		// Arithmetic shift (propagate msb)
 ```
 
 ### addp
@@ -1641,25 +1641,147 @@ x1 * y1: signed * signed
 
 ### not
 
+```
+d = ~d;
+```
+
+|d|Register|
+|---|---|
+|0|a1|
+|0|b1|
+
 ### xor (Form 1)
+
+```
+d = d ^ s
+```
+
+|d|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
 
 ### xor (Form 2)
 
+|d|Dest|Source|
+|---|---|
+|0|a1|b1|
+|1|b1|a1|
+
 ### and (Form 1)
+
+```
+d = d & s
+```
+
+|d|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
 
 ### and (Form 2)
 
+|d|Dest|Source|
+|---|---|
+|0|a1|b1|
+|1|b1|a1|
+
 ### or (Form 1)
+
+```
+d = d | s
+```
+
+|d|Register|
+|---|---|
+|0|a1|
+|1|b1|
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
 
 ### or (Form 2)
 
+|d|Dest|Source|
+|---|---|
+|0|a1|b1|
+|1|b1|a1|
+
 ### lsf (Parallel Form 1)
+
+Logic shift. The shift direction is selected by the sign of the operand.
+
+```
+if (s < 0)
+{
+	d = d << (~s + 1);
+}
+else
+{
+	d = d >> s;
+}
+```
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
 
 ### lsf (Parallel Form 2)
 
+|d|Dest|Source|
+|---|---|
+|0|a|b1|
+|1|b|a1|
+
 ### asf (Parallel Form 1)
 
+Arithmetic shift. The shift direction is selected by the sign of the operand.
+
+```
+if (s < 0)
+{
+	d = d <<< (~s + 1); 		// arithmetic shift
+}
+else
+{
+	d = d >>> s;			// arithmetic shift
+}
+```
+
+|d|Register|
+|---|---|
+|0|a|
+|1|b|
+
+|s|Register|
+|---|---|
+|0|x1|
+|1|y1|
+
 ### asf (Parallel Form 2)
+
+|d|Dest|Source|
+|---|---|
+|0|a|b1|
+|1|b|a1|
 
 ## Parallel Load/Store/Move Instructions Operation Notes
 
