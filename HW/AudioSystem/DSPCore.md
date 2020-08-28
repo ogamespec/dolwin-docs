@@ -1788,7 +1788,7 @@ r0 = r0 + (1 or m0)
 |0|+1|
 |1|+m|
 
-### ld
+### ld (Parallel)
 
 ```
 d = (rn)
@@ -1818,7 +1818,7 @@ rn = rn + (1 or mn)
 |110|XL=1: a, XL=0: a1|
 |111|XL=1: b, XL=0: b1|
 
-### st
+### st (Parallel)
 
 ```
 (rn) = s
