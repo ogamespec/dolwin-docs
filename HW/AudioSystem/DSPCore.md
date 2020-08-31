@@ -197,9 +197,9 @@ ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1). Also, these
 |Syntax|Encoding|C|V|Z|N|E|U|Operation|Cycles|
 |---|---|---|---|---|---|---|---|---|---|
 |jmp(cc) ta|0000 0010 1001 cccc aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Jump conditionally address|2: cc true, 3: cc false|
-|jmpr(cc) rn|0001 0111 0rr0 cccc|-|-|-|-|-|-|Jump conditionally rn|2|
+|jmp(cc) rn|0001 0111 0rr0 cccc|-|-|-|-|-|-|Jump conditionally rn|2|
 |call(cc) ta|0000 0010 1011 cccc aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Call conditionally address|2: cc true, 3: cc false|
-|callr(cc) rn|0001 0111 0rr1 cccc|-|-|-|-|-|-|Call conditionally rn|2|
+|call(cc) rn|0001 0111 0rr1 cccc|-|-|-|-|-|-|Call conditionally rn|2|
 |rets(cc)|0000 0010 1101 cccc|-|-|-|-|-|-|Return conditionally|2|
 |reti(cc)|0000 0010 1111 cccc|\*|\*|\*|\*|\*|\*|Return interrupt conditionally (PSR reloaded)|2|
 |trap|0000 0000 0010 0000|-|-|-|-|-|-|Trap|3|
@@ -343,9 +343,7 @@ if (Condition() == true) PC = ta;
 else PC = PC + 2;
 ```
 
-### jmpr
-
-The instruction is actually called `jmp`, but I've renamed it for clarity.
+### jmp r
 
 |rr|Register|
 |---|---|
@@ -370,11 +368,9 @@ if (Condition() == true)
 else PC = PC + 2;
 ```
 
-### callr
+### call r
 
-The instruction is actually called `call`, but I've renamed it for clarity.
-
-rn parameter is same as jmpr.
+rn parameter is same as `jmp r`.
 
 ```
 if (Condition() == true)
