@@ -2063,9 +2063,8 @@ rn = rn + (+0 or -1 or +1 or +mn)
 |abs d        |1010 d001 xxxx xxxx|
 |Group B| |
 |tst s        |1011 s001 xxxx xxxx|
-|Group C| |
+|Group CD| |
 |cmp d,s      |110s d001 xxxx xxxx|
-|Group D| |
 |Group E| |
 |mac s1,s2    |1110 00ss xxxx xxxx|
 |mac s1,s2    |1110 10ss xxxx xxxx|
