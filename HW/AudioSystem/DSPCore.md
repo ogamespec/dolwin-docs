@@ -264,9 +264,9 @@ Note that instructions starting with 0b0011 (logical operations) take an extra b
 |dec d|0111 10dd xxxx xxxx|C4|V8|Z1|N1|E1|U1|Decrement|1|
 |abs d|1010 d001 xxxx xxxx|0|V5|Z1|N1|E1|U1|Absolute value|1|
 |neg d|0111 110d xxxx xxxx|C4|V3|Z1|N1|E1|U1|Negate|1|
-|negp d|0111 111d xxxx xxxx|C4|V3|Z1|N1|E1|U1|Negate by product|1|
+|neg d,p|0111 111d xxxx xxxx|C4|V3|Z1|N1|E1|U1|Negate by product|1|
 |clr d|1000 d001 xxxx xxxx|0|0|1|0|0|1|Clear accumulator|1|
-|clrp|1000 0100 xxxx xxxx|-|-|-|-|-|-|Clear product|1|
+|clr p|1000 0100 xxxx xxxx|-|-|-|-|-|-|Clear product|1|
 |rnd d|1111 110d xxxx xxxx|C6|V4|Z1|N1|E1|U1|Round accumulator|1|
 |rndp d|1111 111d xxxx xxxx|C7|V6|Z1|N1|E1|U1|Round product|1|
 |tst s|1011 s001 xxxx xxxx|0|0|Z1|N1|E1|U1|Test (Form 1)|1|
@@ -1184,9 +1184,7 @@ else
 d = 0 - d
 ```
 
-### negp
-
-The instruction is actually called `neg`, but I've renamed it for clarity.
+### neg d,p
 
 ```
 d = 0 - p 		// "Folded" product
@@ -1203,9 +1201,7 @@ d = 0 - p 		// "Folded" product
 d = 0
 ```
 
-### clrp
-
-The instruction is actually called `clr`, but I've renamed it for clarity.
+### clr p
 
 ```
 // p = Product_Zero 
@@ -2021,8 +2017,96 @@ rn = rn + (+0 or -1 or +1 or +mn)
 
 ### Parallel Instructions
 
-TBD.
+|Syntax|Encoding|
+|---|---|
+|Group 3| |
+|xor d,s      |0011 00sd 0xxx xxxx|
+|xor d,s      |0011 000d 1xxx xxxx|
+|not d        |0011 001d 1xxx xxxx|
+|and d,s      |0011 01sd 0xxx xxxx|
+|lsf d,s      |0011 01sd 1xxx xxxx|
+|or d,s       |0011 10sd 0xxx xxxx|
+|asf d,s      |0011 10sd 1xxx xxxx|
+|and d,s      |0011 110d 0xxx xxxx|
+|lsf d,s      |0011 110d 1xxx xxxx|
+|or d,s       |0011 111d 0xxx xxxx|
+|asf d,s      |0011 111d 1xxx xxxx|
+|Group 4| |
+|add d,s      |0100 sssd xxxx xxxx|
+|Group 5| |
+|sub d,s      |0101 sssd xxxx xxxx|
+|Group 6| |
+|amv d,s      |0110 sssd xxxx xxxx|
+|Group 7| |
+|addl d,s     |0111 00sd xxxx xxxx|
+|inc d        |0111 01dd xxxx xxxx|
+|dec d        |0111 10dd xxxx xxxx|
+|neg d        |0111 110d xxxx xxxx|
+|neg d,p      |0111 111d xxxx xxxx|
+|Group 8| |
+|nop          |1000 0000 xxxx xxxx|
+|clr d        |1000 d001 xxxx xxxx|
+|cmp a,b      |1000 0010 xxxx xxxx|
+|mpy x1,x1    |1000 0011 xxxx xxxx|
+|clr p        |1000 0100 xxxx xxxx|
+|tst p        |1000 0101 xxxx xxxx|
+|tst s        |1000 011s xxxx xxxx|
+|clr im       |1000 1010 xxxx xxxx|
+|set im       |1000 1011 xxxx xxxx|
+|clr dp       |1000 1100 xxxx xxxx|
+|set dp       |1000 1101 xxxx xxxx|
+|clr xl       |1000 1110 xxxx xxxx|
+|set xl       |1000 1111 xxxx xxxx|
+|Group 9| |
+|asr16 d      |1001 d001 xxxx xxxx|
+|Group A| |
+|abs d        |1010 d001 xxxx xxxx|
+|Group B| |
+|tst s        |1011 s001 xxxx xxxx|
+|Group C| |
+|cmp d,s      |110s d001 xxxx xxxx|
+|Group D| |
+|Group E| |
+|mac s1,s2    |1110 00ss xxxx xxxx|
+|mac s1,s2    |1110 10ss xxxx xxxx|
+|macn s1,s2   |1110 01ss xxxx xxxx|
+|macn s1,s2   |1110 11ss xxxx xxxx|
+|Group F| |
+|lsl16 d      |1111 000d xxxx xxxx|
+|mac s1,s2    |1111 001s xxxx xxxx|
+|lsr16 d      |1111 010d xxxx xxxx|
+|macn s1,s2   |1111 011s xxxx xxxx|
+|addp d,s     |1111 10sd xxxx xxxx|
+|rnd d        |1111 110d xxxx xxxx|
+|rndp d       |1111 111d xxxx xxxx|
+|Group mixed multiply (8-F)| |
+|mpy s1,s2    |1sss s000 xxxx xxxx|
+|rnmpy d,s1,s2|1sss s01d xxxx xxxx|
+|admpy d,s1,s2|1sss s10d xxxx xxxx|
+|mvmpy d,s1,s2|1sss s11d xxxx xxxx|
 
 ### Parallel Load/Store/Move Instructions
 
-TBD.
+|Syntax|Encoding|
+|---|---|
+|7-bit parralel mem ops| |
+|mr rn,mn               |0011 xxxx x000 mmrr|
+|mv d,s                 |0011 xxxx x001 ddss|
+|st rn,mn,s             |0011 xxxx x01s smrr|
+|ld d,rn,mn             |0011 xxxx x1dd dmrr|
+|8-bit parralel mem ops| |
+|mr rn,mn               |01xx xxxx 0000 mmrr|
+|mr rn,mn               |1xxx xxxx 0000 mmrr|
+|mv d,s                 |01xx xxxx 0001 ddss|
+|mv d,s                 |1xxx xxxx 0001 ddss|
+|st rn,mn,s             |01xx xxxx 001s smrr|
+|st rn,mn,s             |1xxx xxxx 001s smrr|
+|ld d,rn,mn             |01xx xxxx 01dd dmrr|
+|ld d,rn,mn             |1xxx xxxx 01dd dmrr|
+|ls d,r,m r,m,s         |01xx xxxx 10dd mn0s|
+|ls2 d,r,m r,m,s        |01xx xxxx 10dd mn1s|
+|ls d,r,m r,m,s         |1xxx xxxx 10dd mn0s|
+|ls2 d,r,m r,m,s        |1xxx xxxx 10dd mn1s|
+|ldd d1,rn,mn d2,r3,m3  |01xx xxxx 11dd mnrr|
+|ldd d1,rn,mn d2,r3,m3  |1xxx xxxx 11dd mnrr|
+|ldd2 d1,rn,mn d2,r3,m3 |1xxx xxxx 11rd mn11|
