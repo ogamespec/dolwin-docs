@@ -55,10 +55,10 @@ Not all registers are associated with simple DFF stores. Reading/writing some of
 |Z|0x0004|Zero|
 |N|0x0008|Negative|
 |E|0x0010|Extension|
-|U|0x0020|Unnormalization|
+|U|0x0020|Unnormalization (~(result[31] ^ result[30]) != 0)|
 |TB|0x0040|Test bit (btstl/btsth instructions)|
 |SV|0x0080|Sticky overflow. Set together with the V overflow bit, can only be cleared by the CLRB instruction.|
-|TE0|0x0100|Interrupt enable 0|
+|TE0|0x0100|Interrupt enable 0 (reserved)|
 |TE1|0x0200|Interrupt enable 1|
 |TE2|0x0400|Interrupt enable 2|
 |TE3|0x0800|Interrupt enable 3|
@@ -223,7 +223,7 @@ ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1). Also, these
 |orli d,li|0000 001d 0110 0000 iiii iiii iiii iiii|0|0|Z2|N2|E1|U1|Or long immediate|2|
 |norm d,rn|0000 001d 0000 01rr|0|0|Z1|N1|E1|U1|Normalize step|1|
 |div d,s|0000 001d 0ss0 1000|C3|0|Z3|N1|E1|U1|Division step|1|
-|addc d,s|0000 0001 d10s 0110|C1|V1|Z1|N1|E1|U1|Add with carry|1|
+|addc d,s|0000 001d 10s0 1100|C1|V1|Z1|N1|E1|U1|Add with carry|1|
 |subc d,s|0000 001d 10s0 1101|C2|V2|Z1|N1|E1|U1|Sub with carry|1|
 |negc d|0000 001d 0000 1101|C4|V3|Z1|N1|E1|U1|Negate with carry|1|
 |max d,s|0000 001d 0ss0 1001|C5|0|Z1|N1|E1|U1|Max|1|
@@ -232,9 +232,7 @@ ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1). Also, these
 |asf d,s|0000 001d 01s0 1011|0|0|Z1|N1|E1|U1|Arithmetic shift directed by sign (Form 1)|1|
 |asf d,s|0000 001d 1100 1011|0|0|Z1|N1|E1|U1|Arithmetic shift directed by sign (Form 2)|1|
 |ld d,r,m|0001 100m mrrd dddd|-|-|-|-|-|-|Load from DMEM|1|
-|lda d,r,m|0010 1011 mmrd dddd|-|-|-|-|-|-|Load from DMEM by accumulator|1|
 |st r,m,s|0001 101m mrrs ssss|-|-|-|-|-|-|Store to DMEM|1|
-|sta r,m,s|0010 1111 mmrs ssss|-|-|-|-|-|-|Store to DMEM by accumulator|1|
 |ldsa d,sa|0010 0ddd aaaa aaaa|-|-|-|-|-|-|Load from DMEM by short address|1|
 |stsa sa,s|0010 1sss aaaa aaaa|-|-|-|-|-|-|Store to DMEM by short address|1|
 |ldla d,la|0000 0000 110d dddd aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Load from DMEM by long address|2|
@@ -262,23 +260,23 @@ Note that instructions starting with 0b0011 (logical operations) take an extra b
 |amv d,s|0110 sssd xxxx xxxx|0|0|Z1|N1|E1|U1|Arithmetic move|1|
 |cmp d,s|110s d001 xxxx xxxx|C2|V2|Z1|N1|E1|U1|Compare|1|
 |cmp a,b|1000 0010 xxxx xxxx|C2|V2|Z1|N1|E1|U1|Compare accumulator|1|
-|inc d|0111 10dd xxxx xxxx|C6|V4|Z1|N1|E1|U1|Increment|1|
-|dec d|0111 11dd xxxx xxxx|C4|V8|Z1|N1|E1|U1|Decrement|1|
+|inc d|0111 01dd xxxx xxxx|C6|V4|Z1|N1|E1|U1|Increment|1|
+|dec d|0111 10dd xxxx xxxx|C4|V8|Z1|N1|E1|U1|Decrement|1|
 |abs d|1010 d001 xxxx xxxx|0|V5|Z1|N1|E1|U1|Absolute value|1|
-|neg d|0111 010d xxxx xxxx|C4|V3|Z1|N1|E1|U1|Negate|1|
-|negp d|0111 011d xxxx xxxx|C4|V3|Z1|N1|E1|U1|Negate by product|1|
+|neg d|0111 110d xxxx xxxx|C4|V3|Z1|N1|E1|U1|Negate|1|
+|negp d|0111 111d xxxx xxxx|C4|V3|Z1|N1|E1|U1|Negate by product|1|
 |clr d|1000 d001 xxxx xxxx|0|0|1|0|0|1|Clear accumulator|1|
-|clrp|1000 0101 xxxx xxxx|-|-|-|-|-|-|Clear product|1|
+|clrp|1000 0100 xxxx xxxx|-|-|-|-|-|-|Clear product|1|
 |rnd d|1111 110d xxxx xxxx|C6|V4|Z1|N1|E1|U1|Round accumulator|1|
 |rndp d|1111 111d xxxx xxxx|C7|V6|Z1|N1|E1|U1|Round product|1|
 |tst s|1011 s001 xxxx xxxx|0|0|Z1|N1|E1|U1|Test (Form 1)|1|
 |tst s|1000 011s xxxx xxxx|0|0|Z1|N1|E1|U1|Test (Form 2)|1|
-|tstp|1000 0101 xxxx xxxx|0|0|Z1|N1|E1|U1|Test product|1|
+|tst p|1000 0101 xxxx xxxx|0|0|Z1|N1|E1|U1|Test product|1|
 |lsl16 d|1111 000d xxxx xxxx|0|0|Z1|N1|E1|U1|Logical shift left 16|1|
 |lsr16 d|1111 010d xxxx xxxx|0|0|Z1|N1|E1|U1|Logical shift right 16|1|
 |asr16 d|1001 d001 xxxx xxxx|0|0|Z1|N1|E1|U1|Arithmetic shift right 16|1|
 |addp d,s|1111 10sd xxxx xxxx|C8|V7|Z1|N1|E1|U1|Add x/y with product|1|
-|nop2|1000 0000 xxxx xxxx|-|-|-|-|-|-|Parallel nop|1|
+|nop|1000 0000 xxxx xxxx|-|-|-|-|-|-|Parallel nop|1|
 |clr im|1000 1010 xxxx xxxx|-|-|-|-|-|-|Clear IM|1|
 |clr dp|1000 1100 xxxx xxxx|-|-|-|-|-|-|Clear DP|1|
 |clr xl|1000 1110 xxxx xxxx|-|-|-|-|-|-|Clear XL|1|
@@ -847,27 +845,6 @@ d = READ_DMEM(rn);
 rn = rn + (0,-1,+1,+m)
 ```
 
-### lda
-
-The instruction is actually called `ld`, but I've renamed it for clarity.
-
-|r|Register|
-|---|---|
-|0|a1|
-|1|b1|
-
-|m|modifier|
-|---|---|
-|00|0|
-|01|+1|
-|10|x0|
-|11|y0|
-
-```
-d = READ_DMEM(a1/b1);
-a1/b1 = a1/b1 + (0,+1,+x0,+y0)
-```
-
 ### st
 
 |rn|Register|
@@ -887,27 +864,6 @@ a1/b1 = a1/b1 + (0,+1,+x0,+y0)
 ```
 WRITE_DMEM(rn, s)
 rn = rn + (0,-1,+1,+m)
-```
-
-### sta
-
-The instruction is actually called `st`, but I've renamed it for clarity.
-
-|r|Register|
-|---|---|
-|0|a1|
-|1|b1|
-
-|m|modifier|
-|---|---|
-|00|0|
-|01|+1|
-|10|x0|
-|11|y0|
-
-```
-WRITE_DMEM(a1/b1, s)
-a1/b1 = a1/b1 + (0,+1,+x0,+y0)
 ```
 
 ### ldsa
@@ -1355,7 +1311,7 @@ Flags <- [a2] [a1] [a0] + [0] [0] [0]
 Flags <- [sign] [x1] [0] + [0] [0] [0]
 ```
 
-### tstp
+### tst p
 
 Test multiply product.
 
@@ -1414,9 +1370,9 @@ p = PackProd();
 [a2] [a1] [a0] = [sign] [x1] [0] + [sign] [p1] [p0]
 ```
 
-### nop2
+### nop (Parallel)
 
-The instruction is actually called `nop`, but I've renamed it for clarity.
+Do nothing.
 
 ### clr im
 
@@ -2003,3 +1959,70 @@ rn = rn + (+0 or -1 or +1 or +mn)
 |01|r1|
 |10|r2|
 |11|r3|
+
+## Instructions sorted by opcode
+
+### Regular Instructions
+
+|Syntax|Encoding|
+|---|---|
+|Group 0| |
+|nop         |0000 0000 0000 0000|
+|mr rn,mn    |0000 0000 000m mmrr|
+|trap        |0000 0000 0010 0000|
+|wait        |0000 0000 0010 0001|
+|repr reg    |0000 0000 010r rrrr|
+|loopr reg,ea|0000 0000 011r rrrr aaaa aaaa aaaa aaaa|
+|mvli d,li   |0000 0000 100d dddd aaaa aaaa aaaa aaaa|
+|ldla d,la   |0000 0000 110d dddd aaaa aaaa aaaa aaaa|
+|stla la,s   |0000 0000 111s ssss aaaa aaaa aaaa aaaa|
+|adli d,li   |0000 001d 0000 0000 iiii iiii iiii iiii|
+|norm d,rn   |0000 001d 0000 01rr|
+|negc d      |0000 001d 0000 1101|
+|pld d,rn,mn |0000 001d 0001 mmrr|
+|xorli d,li  |0000 001d 0010 0000 iiii iiii iiii iiii|
+|anli d,li   |0000 001d 0100 0000 iiii iiii iiii iiii|
+|orli d,li   |0000 001d 0110 0000 iiii iiii iiii iiii|
+|div d,s     |0000 001d 0ss0 1000|
+|max d,s     |0000 001d 0ss0 1001|
+|lsf d,s     |0000 001d 01s0 1010|
+|asf d,s     |0000 001d 01s0 1011|
+|exec(cc)    |0000 0010 0111 cccc|
+|cmpli s,li  |0000 001s 1000 0000 iiii iiii iiii iiii|
+|addc d,s    |0000 001d 10s0 1100|
+|subc d,s    |0000 001d 10s0 1101|
+|jmp(cc) ta  |0000 0010 1001 cccc aaaa aaaa aaaa aaaa|
+|btstl d,bs  |0000 001d 1010 0000 bbbb bbbb bbbb bbbb|
+|call(cc) ta |0000 0010 1011 cccc aaaa aaaa aaaa aaaa|
+|btsth d,bs  |0000 001d 1100 0000 bbbb bbbb bbbb bbbb|
+|lsf d,s     |0000 001d 1100 1010|
+|asf d,s     |0000 001d 1100 1011|
+|rets(cc)    |0000 0010 1101 cccc|
+|reti(cc)    |0000 0010 1111 cccc|
+|adsi d,si   |0000 010d iiii iiii|
+|cmpsi s,si  |0000 011s iiii iiii|
+|mvsi d,si   |0000 1ddd iiii iiii|
+|Group 1| |
+|rep rc      |0001 0000 cccc cccc|
+|loop lc,ea  |0001 0001 cccc cccc aaaa aaaa aaaa aaaa|
+|clrb b      |0001 0010 0000 0bbb|
+|setb b      |0001 0011 0000 0bbb|
+|lsfi d,si   |0001 010d 0iii iiii|
+|asfi d,si   |0001 010d 1iii iiii|
+|stli sa,li  |0001 0110 aaaa aaaa iiii iiii iiii iiii|
+|jmpr(cc) rn |0001 0111 0rr0 cccc|
+|callr(cc) rn|0001 0111 0rr1 cccc|
+|ld d,r,m    |0001 100m mrrd dddd|
+|st r,m,s    |0001 101m mrrs ssss|
+|mv d,s      |0001 11dd ddds ssss|
+|Group 2| |
+|ldsa d,sa   |0010 0ddd aaaa aaaa|
+|stsa sa,s   |0010 1sss aaaa aaaa|
+
+### Parallel Instructions
+
+TBD.
+
+### Parallel Load/Store/Move Instructions
+
+TBD.
