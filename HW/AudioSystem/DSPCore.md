@@ -57,7 +57,7 @@ Not all registers are associated with simple DFF stores. Reading/writing some of
 |E|0x0010|Extension|
 |U|0x0020|Unnormalization (~(result[31] ^ result[30]) != 0)|
 |TB|0x0040|Test bit (btstl/btsth instructions)|
-|SV|0x0080|Sticky overflow. Set together with the V overflow bit, can only be cleared by the CLRB instruction.|
+|SV|0x0080|Sticky overflow. Set together with the V overflow bit, can only be cleared by the `clr sv` instruction.|
 |TE0|0x0100|Interrupt enable 0 (reserved)|
 |TE1|0x0200|Interrupt enable 1|
 |TE2|0x0400|Interrupt enable 2|
@@ -241,8 +241,8 @@ ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1). Also, these
 |mvsi d,si|0000 1ddd iiii iiii|-|-|-|-|-|-|Move short immediate|1|
 |mvli d,li|0000 0000 100d dddd iiii iiii iiii iiii|-|-|-|-|-|-|Move long immediate|2|
 |stli sa,li|0001 0110 aaaa aaaa iiii iiii iiii iiii|-|-|-|-|-|-|Store long immedate to DMEM by short address (high bits of address are 0xFF)|2|
-|clrb b|0001 0010 0000 0bbb|-|-|-|-|-|-|Clear PSR bit|1|
-|setb b|0001 0011 0000 0bbb|-|-|-|-|-|-|Set PSR bit|1|
+|clr b|0001 0010 0000 0bbb|-|-|-|-|-|-|Clear PSR bit|1|
+|set b|0001 0011 0000 0bbb|-|-|-|-|-|-|Set PSR bit|1|
 |btstl d,bs|0000 001d 1010 0000 bbbb bbbb bbbb bbbb|-|-|-|-|-|-|Test bit clear(low)|2|
 |btsth d,bs|0000 001d 1100 0000 bbbb bbbb bbbb bbbb|-|-|-|-|-|-|Test bit set(high)|2|
 
@@ -949,9 +949,7 @@ d = li
 WRITE_DMEM ( (0xFF00 | sa), li)
 ```
 
-### clrb
-
-The instruction is actually called `clr`, but I've renamed it for clarity.
+### clr b
 
 Clear PSR bit.
 
@@ -966,9 +964,7 @@ Clear PSR bit.
 |110|et|
 |111|-|
 
-### setb
-
-The instruction is actually called `set`, but I've renamed it for clarity.
+### set b
 
 Set PSR bit.
 
@@ -2001,8 +1997,8 @@ rn = rn + (+0 or -1 or +1 or +mn)
 |Group 1| |
 |rep rc      |0001 0000 cccc cccc|
 |loop lc,ea  |0001 0001 cccc cccc aaaa aaaa aaaa aaaa|
-|clrb b      |0001 0010 0000 0bbb|
-|setb b      |0001 0011 0000 0bbb|
+|clr b       |0001 0010 0000 0bbb|
+|set b       |0001 0011 0000 0bbb|
 |lsfi d,si   |0001 010d 0iii iiii|
 |asfi d,si   |0001 010d 1iii iiii|
 |stli sa,li  |0001 0110 aaaa aaaa iiii iiii iiii iiii|
