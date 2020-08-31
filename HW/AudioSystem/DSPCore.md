@@ -239,7 +239,7 @@ ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1). Also, these
 |stla la,s|0000 0000 111s ssss aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Store to DMEM by long address|2|
 |mv d,s|0001 11dd ddds ssss|-|-|-|-|-|-|Move register (non-parallel)|1|
 |mvsi d,si|0000 1ddd iiii iiii|-|-|-|-|-|-|Move short immediate|1|
-|mvli d,li|0000 0000 100d dddd aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Move long immediate|2|
+|mvli d,li|0000 0000 100d dddd iiii iiii iiii iiii|-|-|-|-|-|-|Move long immediate|2|
 |stli sa,li|0001 0110 aaaa aaaa iiii iiii iiii iiii|-|-|-|-|-|-|Store long immedate to DMEM by short address (high bits of address are 0xFF)|2|
 |clrb b|0001 0010 0000 0bbb|-|-|-|-|-|-|Clear PSR bit|1|
 |setb b|0001 0011 0000 0bbb|-|-|-|-|-|-|Set PSR bit|1|
@@ -1969,7 +1969,7 @@ rn = rn + (+0 or -1 or +1 or +mn)
 |wait        |0000 0000 0010 0001|
 |repr reg    |0000 0000 010r rrrr|
 |loopr reg,ea|0000 0000 011r rrrr aaaa aaaa aaaa aaaa|
-|mvli d,li   |0000 0000 100d dddd aaaa aaaa aaaa aaaa|
+|mvli d,li   |0000 0000 100d dddd iiii iiii iiii iiii|
 |ldla d,la   |0000 0000 110d dddd aaaa aaaa aaaa aaaa|
 |stla la,s   |0000 0000 111s ssss aaaa aaaa aaaa aaaa|
 |adli d,li   |0000 001d 0000 0000 iiii iiii iiii iiii|
