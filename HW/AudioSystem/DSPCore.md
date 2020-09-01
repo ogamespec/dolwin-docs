@@ -206,7 +206,7 @@ ACRS, ACWE and DCRE are shared by single interrupt enable bit (TE1). Also, these
 |wait|0000 0000 0010 0001|-|-|-|-|-|-|Wait any interrupt|Any|
 |exec(cc)|0000 0010 0111 cccc|-|-|-|-|-|-|Execute next instruction conditionally|1|
 |loop lc,ea|0001 0001 cccc cccc aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Loop by immeditate until end address|2|
-|loopr reg,ea|0000 0000 011r rrrr aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Loop by reg until end address|2|
+|loop reg,ea|0000 0000 011r rrrr aaaa aaaa aaaa aaaa|-|-|-|-|-|-|Loop by reg until end address|2|
 |rep rc|0001 0000 cccc cccc|-|-|-|-|-|-|Repeat next instruction by immediate|1|
 |rep reg|0000 0000 010r rrrr|-|-|-|-|-|-|Repeat next instruction by register|1|
 |pld d,rn,mn|0000 001d 0001 mmrr|-|-|-|-|-|-|Load from IMEM|3|
@@ -443,9 +443,7 @@ The logic behind the loop is as follows:
 
 Checking the current pc for loop is done only if the eas/lcs stack is not empty (eas and lcs stacks share a common stack pointer).
 
-### loopr
-
-The instruction is actually called `loop`, but I've renamed it for clarity.
+### loop r
 
 Same as `loop`, but lc is taken from register.
 
@@ -1958,7 +1956,7 @@ rn = rn + (+0 or -1 or +1 or +mn)
 |trap        |0000 0000 0010 0000|
 |wait        |0000 0000 0010 0001|
 |rep reg     |0000 0000 010r rrrr|
-|loopr reg,ea|0000 0000 011r rrrr aaaa aaaa aaaa aaaa|
+|loop reg,ea |0000 0000 011r rrrr aaaa aaaa aaaa aaaa|
 |mvli d,li   |0000 0000 100d dddd iiii iiii iiii iiii|
 |ldla d,la   |0000 0000 110d dddd aaaa aaaa aaaa aaaa|
 |stla la,s   |0000 0000 111s ssss aaaa aaaa aaaa aaaa|
