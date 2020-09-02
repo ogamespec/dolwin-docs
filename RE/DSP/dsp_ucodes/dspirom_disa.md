@@ -182,7 +182,7 @@ void DspMain ()         // 800E
 Wait for message from the processor.
 
 ```
-8078 26 FE       	ldsa 	a1, $0x00FE
+8078 26 FE       	ldsa 	a1, $0x00FE 				// CMBH
 8079 02 C0 80 00 	btsth	a1, #0x8000
 807B 02 9C 80 78 	jmpnt	$0x8078
 807D 02 DF       	rets 	
@@ -203,7 +203,7 @@ uint16_t WaitCpuMailbox()       // 8078
 Wait until processor read both the upper and lower parts of DSP Mailbox.
 
 ```
-807E 26 FC       	ldsa 	a1, $0x00FC
+807E 26 FC       	ldsa 	a1, $0x00FC 				// DMBH
 807F 02 A0 80 00 	btstl	a1, #0x8000
 8081 02 9C 80 7E 	jmpnt	$0x807E
 8083 02 DF       	rets 	
