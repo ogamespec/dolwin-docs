@@ -36,7 +36,7 @@
 002A 00 00       	nop
 
 002B 26 FC       	ldsa 	a1, $0x00FC 			// DMBH
-002C 02 A0 80 00 	btstl	a, #0x8000
+002C 02 A0 80 00 	btstl	a1, #0x8000
 002E 02 9C 00 2B 	jmpnt	$0x002B
 
 0030 16 FC 00 54 	stli 	$(DMBH), #0x0054
