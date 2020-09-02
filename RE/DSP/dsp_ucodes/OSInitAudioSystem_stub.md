@@ -25,7 +25,7 @@
 0019 00 88 FF FF 	mvli 	l0, #0xFFFF
 001B 00 84 10 00 	mvli 	m0, #0x1000
 001D 00 64 00 20 	loop 	m0, $0x0020
-001F 02 18       	pld  	a, r0, +1
+001F 02 18       	pld  	a1, r0, +1
 0020 00 00       	nop
 
 0021 00 80 10 00 	mvli 	r0, #0x1000 				// Probe DROM
