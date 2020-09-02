@@ -994,7 +994,7 @@ Used to poll hardware registers.
 |1|b1|
 
 ```
-psr.tb = (d & BitMask) != 0
+psr.tb = (d & BitMask) == BitMask
 ```
 
 ## Parallel Instructions Operation Notes
