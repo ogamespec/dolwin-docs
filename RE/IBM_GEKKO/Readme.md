@@ -2,6 +2,14 @@
 
 Some images of the Gekko processor from my microscope.
 
+Full processor image compiled in Hugin, 10x magnification. Can be used to estimate the complexity of chip topology and pinout. During the stitcthing, Hugin did not cope with the photogrammetry in the lower left corner. I will update the picture later, as I make the stitching without errors.
+
+Btw, the appearance of the processor topology differs from the pictures that circulate on the internet.
+
+![Gekko_dirty_10x.jpg](Gekko_dirty_10x.jpg)
+
+## Noticible features
+
 The technology of wiring is shown. IBM uses a very unusual way - the bends of the wires occur with smooth transitions (cascades). In addition, the unused portion of the top layer of metal is mostly covered with circular patterns (I call them "IBM pimples").
 
 ![dust_001.jpg](dust_001.jpg)
