@@ -10,7 +10,7 @@ Btw, the appearance of the processor topology differs from the pictures that cir
 
 ## Noticible features
 
-The technology of wiring is shown. IBM uses a very unusual way - the bends of the wires occur with smooth transitions (cascades). In addition, the unused portion of the top layer of metal is mostly covered with circular patterns (I call them "IBM pimples").
+The technology of wiring is shown. IBM uses a very unusual way - the bends of the wires occur with smooth transitions (cascades). In addition, the unused portion of the top layer of metal is mostly covered with circular patterns.
 
 ![dust_001.jpg](dust_001.jpg)
 
