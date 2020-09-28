@@ -24,6 +24,10 @@ Some areas are covered with "pimples".
 
 ![00003.jpg](00003.jpg)
 
+By the way, if you look at the skin of a gecko with a magnification, you get a similar picture. Perhaps that's why Gekko got its name.
+
+![gecko-skin.jpg](gecko-skin.jpg)
+
 Technological regions for checking the technical process of transistors. Here, most likely, simple transistors are left for diagnostics to make sure that the masks of the FET channels are applied correctly.
 
 ![00004.jpg](00004.jpg)
