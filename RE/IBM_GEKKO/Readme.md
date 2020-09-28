@@ -2,7 +2,7 @@
 
 Some images of the Gekko processor from my microscope.
 
-Full processor image compiled in Hugin, 10x magnification. Can be used to estimate the complexity of chip topology and pinout. During the stitcthing, Hugin did not cope with the photogrammetry in the lower left corner. I will update the picture later, as I make the stitching without errors.
+Full processor image compiled in Hugin, 10x magnification. Can be used to estimate the complexity of chip topology and pinout.
 
 Btw, the appearance of the processor topology differs from the pictures that circulate on the internet.
 
