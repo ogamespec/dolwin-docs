@@ -35,6 +35,8 @@ Take your pick :)
 - Try to run GC-Linux. Ideally, it would be good if you were one of the GC-Linux developers from 2005, so that you can figure out why it doesn't boot any faster
 - Develop a new debug UI. The Console UI we have had since version 0.10 is not very usable right now. Some kind of more modern UI would be cool.
 
+And of course you can come up with your own goals and objectives or pick up the current development.
+
 ## Note for UI developers
 
 A special service interface called JDI is used to interact between Dolwin core and UI.
