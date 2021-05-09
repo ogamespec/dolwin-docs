@@ -77,3 +77,11 @@ Better:
 #pragma endregion "Section name and description"
 
 ```
+
+## Case
+
+Use `CamelCase` for class and method names. For property names use `snake_case` or `lowCamelCase`.
+
+## #define
+
+Avoid using macro-programming. Even if you really want to make 100 methods that are slightly different from each other with a single macro - it's better to make 100 copypastes.
