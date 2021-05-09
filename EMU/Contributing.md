@@ -6,7 +6,7 @@ Dolwin on the one hand is an experimental emulator which aims to create easy to 
 
 On the user side, Dolwin is a casual emulator. There are currently no plans to add all sorts of frills, such as cheats, network play, TAS tools, video recording and the like.
 The reason is that it would require adding a lot of dependencies into the source code, and since the emulator is positioned as a learning project, it won't contribute to that goal.
-Also, we don't want to turn into a "borg" emulator, like Dolphin-emu, which contains poorly structured code in huge quantities.
+Also, we don't want to turn into a "borg" emulator, which contains poorly structured code in huge quantities.
 
 Also, what is not planned (most likely on this list is exactly what you would like):
 - Wii/Triforce support. Dolwin - GameCube emulator.
