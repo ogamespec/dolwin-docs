@@ -75,7 +75,7 @@ PI FIFO is used to generate a command list. It acts as a producer.
 |Bits|Name|Meaning|
 |----|----|-------|
 |31:27| |Reserved(?)|
-|26|WRAP|Set to `1` after Wrptr becomes equal to the value of Top. When is it reset? It looks like a subsequent write to FIFO automatically clears the bit.|
+|26|WRAP|Set to `1` after Wrptr becomes equal to the value of Top. When the CPU writes to the Wrptr register, this bit is cleared. When the FIFO burst writes by the Wrptr address, this bit remains asserted|
 |25:5|WRPTR|The current address for writing the next 32 bytes of FIFO data. Writing is made when the processor performs a burst transaction at the address 0x0C008000. After write, the value is increased by 32. When the value becomes equal to Top, Wrptr is set to Base and the Wrap bit is set.|
 |4:0|0|Zeroes|
 
