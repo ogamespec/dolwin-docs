@@ -1,7 +1,7 @@
 
 Gamecube hardware acronyms.
 
-Version 1.3. (2 Feb 2007)
+Version 1.4. (9 Mar 2026)
 
 ------------------------------------------------------------------------------
 
@@ -184,7 +184,8 @@ RSW
     were equipped by switch, insted programmable reset button.
 
 RTC
-    Real-time clock. EXI device, counting seconds.
+    Real-time clock, counting seconds since 01.01.2000. On the motherboard there is
+    a BootROM chip, which also contains the RTC and SRAM, connected to the EXI bus as a device.
 
 SDK
     Software Development Kit. Full set of compilers, libraries and documentation
@@ -196,6 +197,9 @@ SDK
 SI
     Serial Interface. Hardware responsible for communication with serial devices,
     such as GC controller and keyboard via serial I/O buffer.
+
+Splash
+    Code name for two 1T-SRAM (main memory) chips.
 
 SPR
     Special-purpose register. Set of registers, dedicated to operating system.
