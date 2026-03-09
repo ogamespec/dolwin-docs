@@ -42,6 +42,8 @@ Write Gather Buffer is enabled by setting a bit in the Gekko HID2 register.
 
 There are two FIFOs: PI FIFO and CP FIFO. PI FIFO belongs to the Gekko processor and is accessible through PI registers. CP FIFO refers to the GX and is configured with its own CP registers.
 
+This was done because the CP can't perform Burst Write operations in MEM, meaning it always acts as a Consumer. Meanwhile, the PI is designed specifically for Gekko Burst operations; for example, 60x Bus Burst transactions are used for cache operations. Therefore, the developers came up with a clever solution: when writing to the PI FIFO, a notification signal is sent to the CP so that the CP can adjust the Wrptr register on its side.
+
 Processor-GX interaction diagram using the FIFOs mechanism:
 
 ![GX_FIFO](GX_FIFO.png)
@@ -133,7 +135,8 @@ In Linked mode, Watermark logic is activated. If the FIFO size (FIFO_COUNT) beco
 
 Breakpoint logic is mode-independent (?). When FIFO_RPTR becomes equal to FIFO_BRK, a Breakpoint interrupt is generated.
 
-In multi-buffer mode, the CP processes FIFO until the FIFO size (FIFO_COUNT) is greater than 0. FIFO_COUNT is the distance between CP Wrptr and CP Rdptr.
+In multi-buffer mode (CP_ENABLE\[4\] = 0), the CP processes FIFO until the FIFO size (FIFO_COUNT) is greater than 0. FIFO_COUNT is the distance between CP Wrptr and CP Rdptr.
+In this mode, the program must set Rdptr and Wrptr itself so that CP can start working with FIFO.
 
 ### FIFO Command Format
 
