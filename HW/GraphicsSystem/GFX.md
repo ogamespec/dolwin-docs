@@ -1,26 +1,27 @@
-# Flipper GPU (GX)
+# Flipper GPU (GFX)
 
-Flipper GPU (hereinafter GX) is a graphics processor with a fixed pipeline. Although the GX is quite complex, it certainly does not compare with modern GPUs in terms of complexity.
+> [!WARNING]
+> Information in this document may be inaccurate and will be updated in the process.
 
-But even in spite of the average complexity - the GX scheme is so confusing that it is quite difficult to compose a document with a clear presentation structure. The formalization of knowledge on GX becomes available only after reading the entire documentation.
+Flipper GPU (hereinafter GFX) is a graphics processor with a fixed pipeline. Although the GFX is quite complex, it certainly does not compare with modern GPUs in terms of complexity.
 
-GX connection with other Flipper components:
+But even in spite of the average complexity - the GFX scheme is so confusing that it is quite difficult to compose a document with a clear presentation structure. The formalization of knowledge on GFX becomes available only after reading the entire documentation.
 
-![GX_1](GX_Interconnect.png)
+GFX connection with other Flipper components:
 
-Internal GX architecture:
+![GFX_1](GFX_Interconnect.png)
 
-![GX_2](GX_Internal.png)
+Internal GFX architecture:
 
-So that you can estimate the complexity of each GX component, here is a picture with the layout of the main areas of the Flipper chip:
+![GFX_2](GFX_Internal.png)
+
+So that you can estimate the complexity of each GFX component, here is a picture with the layout of the main areas of the Flipper chip:
 
 ![Flipper_ASIC](/RE/Flipper_ASIC/flipper_floorplan.jpg)
 
-Information in this document may be inaccurate and will be updated in the process.
-
 ## Gekko Write Gather Buffer
 
-Generally speaking, this section is not specific to GX, but it is better to put it here for context.
+Generally speaking, this section is not specific to GFX, but it is better to put it here for context.
 
 Write Gather Buffer is a small FIFO inside the Gekko processor that collects single-beat writes at the specified physical address, and when 32 bytes are collected, it passes them to Flipper as a single burst transaction.
 
@@ -38,15 +39,15 @@ WPAR is mapped as Gekko SPR 921.
 
 Write Gather Buffer is enabled by setting a bit in the Gekko HID2 register.
 
-## GX FIFOs
+## GFX FIFOs
 
-There are two FIFOs: PI FIFO and CP FIFO. PI FIFO belongs to the Gekko processor and is accessible through PI registers. CP FIFO refers to the GX and is configured with its own CP registers.
+There are two FIFOs: PI FIFO and CP FIFO. PI FIFO belongs to the Gekko processor and is accessible through PI registers. CP FIFO refers to the GFX and is configured with its own CP registers.
 
 This was done because the CP can't perform Burst Write operations in MEM, meaning it always acts as a Consumer. Meanwhile, the PI is designed specifically for Gekko Burst operations; for example, 60x Bus Burst transactions are used for cache operations. Therefore, the developers came up with a clever solution: when writing to the PI FIFO, a notification signal is sent to the CP so that the CP can adjust the Wrptr register on its side.
 
-Processor-GX interaction diagram using the FIFOs mechanism:
+Processor-GFX interaction diagram using the FIFOs mechanism:
 
-![GX_FIFO](GX_FIFO.png)
+![GFX_FIFO](GFX_FIFO.png)
 
 Call FIFO is processed separately and does not depend on PI/CP FIFOs.
 
@@ -81,7 +82,7 @@ PI FIFO is used to generate a command list. It acts as a producer.
 |25:5|WRPTR|The current address for writing the next 32 bytes of FIFO data. Writing is made when the processor performs a burst transaction at the address 0x0C008000. After write, the value is increased by 32. When the value becomes equal to Top, Wrptr is set to Base and the Wrap bit is set.|
 |4:0|0|Zeroes|
 
-As you can see, PI FIFO knows nothing about the mode in which it works: linked or multi-buffer. This logic is implemented entirely in the GX command processor.
+As you can see, PI FIFO knows nothing about the mode in which it works: linked or multi-buffer. This logic is implemented entirely in the command processor.
 
 ## Command Processor/Vertex Cache
 
@@ -90,7 +91,7 @@ The command processor fetches:
 - Display lists from main memory via an on-chip call FIFO memory buffer.
 - Vertex attributes from the command stream and/or from vertex arrays in memory via a vertex cache.
 
-Reading FIFOs from the GX side are always set to 32 byte chunks.
+Reading FIFOs from the GFX side are always set to 32 byte chunks.
 
 ### Command Processor FIFO
 
@@ -131,7 +132,7 @@ CP FIFO operates in two modes: linked mode and multi-buffer mode.
 
 Linked mode is turned on by bit 4 in the CP_ENABLE register. In this mode, writing another portion of data to FIFO 0x0C008000 causes CP Wrptr to increase its value by 32. At the same time, writing to 0x0C008000 is processed by the PI FIFO mechanism (see above). This interaction causes the CP to start processing FIFOs whenever possible, as the distance between CP Rdptr and CP Wrptr has changed.
 
-In Linked mode, Watermark logic is activated. If the FIFO size (FIFO_COUNT) becomes smaller than FIFO_LOCNT, a FIFO underflow is generated. If the FIFO size becomes larger than FIFO_HICNT, a FIFO overflow interrupt is generated. When underflow/overflow interrupts are active CP stops reading new data.
+In Linked mode, Watermark logic is activated (?). If the FIFO size (FIFO_COUNT) becomes smaller than FIFO_LOCNT, a FIFO underflow is generated. If the FIFO size becomes larger than FIFO_HICNT, a FIFO overflow interrupt is generated. When underflow/overflow interrupts are active CP stops reading new data.
 
 Breakpoint logic is mode-independent (?). When FIFO_RPTR becomes equal to FIFO_BRK, a Breakpoint interrupt is generated.
 
@@ -170,7 +171,7 @@ More description can be found in US6717577 "VERTEX CACHE FOR 3D COMPUTER GRAPHIC
 
 ### Internal State Registers
 
-GX state stored in 3 sets of registers:
+GFX state stored in 3 sets of registers:
 - CP Registers
 - XF Registers
 - So-called "ByPass" (BP) address space Registers. They are called ByPass, because they are accessed bypassing the vertex transformation unit (XF)
@@ -420,16 +421,19 @@ XF block diagram:
 Setup unit receives vertex data from transform unit (XF) and sends triangle setup information to one or more rasterizer units performing edge rasterization, texture coordinate rasterization and color rasterization.
 
 Terminology:
-- The primitive is what the GX can draw. Triangle, point, etc.
+- The primitive is what the GFX can draw. Triangle, point, etc.
 - Primitives consist of vertices;
 - Each vertex contains a set of attributes (position, color etc.). At least position attribute must be present;
 - Attributes can be Direct and Indexed. Direct attributes are contained in the command list itself. For indexed attributes, the command list contains only the index. A buffer with attributes is located in the main memory and is additionally cached in Vertex cache.
 
 The rasterizer(s) is able to draw the following graphic primitives:
 
-![GX_Primitives](GX_Primitives.png)
+![GFX_Primitives](GFX_Primitives.png)
 
-The GX contains three rasterizers RAS0, RAS1 and RAS2.
+The GFX contains three rasterizers RAS0, RAS1 and RAS2:
+- RAS0: edge rasterization
+- RAS1: texture coordinate rasterization
+- RAS2: color rasterization
 
 ## Texture Environment Unit (TEV)
 
