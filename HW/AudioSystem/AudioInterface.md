@@ -10,6 +10,33 @@ Based on US patents 6,609,977, 7,369,665.
 
 ![Flipper AI DMA](AI_DMA.png)
 
+## AI Interrupts
+
+The Audio Interface API is responsible for managing two interrupts to the
+host CPU:
+- The streamed sample counter interrupt (AIINT).
+- The AI DMA interrupt (AIDINT).
+Note that the streamed sample counter interrupt is generated directly by
+the AI hardware. The AI DMA interrupt, however, comes from the memory
+controller of the audio subsystem.
+
+Audio streaming sample counter interrupt (AIINT)
+
+The Audio Interface provides facilities for counting the number of streamed
+(left/right) samples played and asserting an interrupt at some programmable
+trigger value. Note that only audio samples streamed from the optical disc
+are counted. Note also that samples are counted after the sample rate
+conversion stage-thus, the stream will always be at a 48KHz sample rate.
+
+AI DMA interrupt (AIDINT)
+
+The Audio Interface API provides control over the AI DMA. The actual DMA
+controller resides within the audio subsystem of the Graphics Processor ASIC.
+The AI DMA feeds data from main memory to the AI FIFO, which is 32 bytes in
+length (the size of a single DMA block). The AI FIFO consumes data at a rate
+of either 48,000 or 32,000 stereo samples per second. The sample rate of the
+AI FIFO DMA may be controlled through AISetDSPSampleRate().
+
 ## Flipper AudioOut
 
 ![Flipper AudioOut](Flipper_Audio_Output.png)
