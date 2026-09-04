@@ -161,6 +161,10 @@ supports light-gun position latching (via `guntrg`), interlaced, double-strike a
 **progressive (480p)** modes, and PAL/NTSC/M-PAL/PAL60 output. The video buffer is
 stored in Y1UY2V-packed format to save bandwidth.
 
+The register-level, emulator-focused description of the VI — complete register
+map, H/V timing tables, the horizontal scaler, and the scan-out model — is in
+[video-interface.md](video-interface.md).
+
 ## 6. Boot ROM / reset
 
 Flipper generates the Gekko reset vector address and the reset signal; on reset
