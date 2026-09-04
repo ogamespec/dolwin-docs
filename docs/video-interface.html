@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Video Interface (VI)</title>
+  <meta name="description" content="GameCube Video Interface (VI): the scan-out engine that reads the external framebuffer and generates TV timing. Register map, H/V timing, horizontal scaler, light-gun and emulator model." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="video-interface.html" class="active">Video Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Video Interface</p>
+      <h1>Video Interface (VI)</h1>
+      <blockquote><strong>VI</strong> is the block inside the <strong>Flipper</strong>
+        ASIC that reads the external framebuffer (XFB) out of main memory and turns it
+        into a serial video stream for the display. It generates all the NTSC / PAL /
+        M-PAL timing an external encoder needs and, in the retail design, is entirely
+        digital — an external <strong>Rohm</strong> encoder turns that stream into the
+        TV signal.</blockquote>
+
+      <p>This is the register-level, emulator-focused specification. The facts are drawn
+        from the repository's hardware documentation and reverse-engineering sources and
+        summarised rather than reproduced verbatim. It describes the <strong>legacy</strong>
+        (GameCube) VI as sold.</p>
+
+      <h2>1. Overview</h2>
+      <p>The VI is a <strong>scan-out</strong> engine. On every line it issues cache-line
+        reads to the memory controller, unpacks 4:2:2 YUV data, optionally runs it through
+        a horizontal resampling / anti-aliasing filter, and clocks the result out on a
+        digital bus together with generated sync/blanking flags. A vertical counter and a
+        horizontal (pixel) counter produce the line / field / frame timing.</p>
+
+      <h3>1.1 Sub-blocks</h3>
+      <table>
+        <tr><th>Block</th><th>Role</th></tr>
+        <tr><td><code>vi_pi</code></td><td>Register interface to the PI; holds all programmer-visible registers</td></tr>
+        <tr><td><code>vi_horcnt</code></td><td>Horizontal (pixel) counter: HSYNC, HBLANK, colour-burst position, active window</td></tr>
+        <tr><td><code>vi_vercnt</code></td><td>Vertical (line) counter: VSYNC, VBLANK, field/frame, equalisation/serration</td></tr>
+        <tr><td><code>vi_mem_read</code></td><td>Address/fetch control: issues cache-line reads, packs the pixel stream</td></tr>
+        <tr><td><code>vi_mem_write</code></td><td>Memory side of the read path: request/acknowledge handshake</td></tr>
+        <tr><td><code>vi_hscaler</code></td><td>Horizontal resampler (stepper + phase generation)</td></tr>
+        <tr><td><code>vi_hf</code></td><td>6-tap, 8-phase FIR filter (anti-aliasing low-pass)</td></tr>
+        <tr><td><code>vi_rohm</code></td><td>Output formatter/encoder: serialises pixels, injects sync/blanking flags</td></tr>
+      </table>
+      <p>The three-component pixel path is:</p>
+      <pre><code>main RAM (YUV 4:2:2) ──vi_mem_read──▶ vi_hscaler ──▶ vi_hf (FIR) ──▶ vi_rohm ──▶ vdata / vphase</code></pre>
+
+      <h2>2. External interfaces</h2>
+      <h3>2.1 PI / VI register interface</h3>
+      <p>Registers are reached through the Processor Interface. The bus is asynchronous to
+        the video clock and sampled on both ends (so a request and its acknowledge are never
+        on the same cycle). All register data is 16-bit; a 32-bit CPU access is split by the
+        PI into two 16-bit transfers (high word at the base, low word at base+1), and the
+        whole Flipper is big-endian.</p>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>pi_viAddr[8:1]</code></td><td>8</td><td>in</td><td>Register address (halfword granularity)</td></tr>
+        <tr><td><code>pi_viData[15:0]</code></td><td>16</td><td>in</td><td>Write data</td></tr>
+        <tr><td><code>vi_piData[15:0]</code></td><td>16</td><td>out</td><td>Read data</td></tr>
+        <tr><td><code>pi_viRd</code></td><td>1</td><td>in</td><td>1 = read, 0 = write</td></tr>
+        <tr><td><code>pi_viReq</code></td><td>1</td><td>in</td><td>One-cycle transaction start</td></tr>
+        <tr><td><code>vi_piAck</code></td><td>1</td><td>out</td><td>One-cycle completion</td></tr>
+        <tr><td><code>vi_piVrtIntr</code></td><td>1</td><td>out</td><td>Vertical interrupt request to the CPU</td></tr>
+        <tr><td><code>resetb</code></td><td>1</td><td>in</td><td>Hardware reset</td></tr>
+      </table>
+
+      <h3>2.2 VI / encoder interface (VI/EN)</h3>
+      <p>The digital output to the video encoder is a 10-pin interface at <strong>27 MHz</strong>
+        (the pixel-clock domain), doubling to <strong>54 MHz</strong> only for progressive
+        ("480p") output.</p>
+      <table>
+        <tr><th>Pin</th><th>Width</th><th>Description</th></tr>
+        <tr><td><code>vclk</code></td><td>1</td><td>Video clock (27 MHz, 54 MHz in progressive)</td></tr>
+        <tr><td><code>vphase</code></td><td>1</td><td>Phase — low selects the YCb set, high the YCr set</td></tr>
+        <tr><td><code>vdata</code></td><td>8</td><td>YCrCb pixels during active display; timing flags during blanking</td></tr>
+      </table>
+      <p>The stream carries <strong>Y, Cb, Cr</strong> at the 4:2:2 rate. During <em>blanking</em>
+        the two chroma bytes are reused to transmit the timing flags, so the encoder must
+        reconstruct them to the full line rate — meaning HSYNC and the colour burst can be
+        shifted by one pixel. Two cases matter for the encoder and for emulators modelling
+        pixel timing:</p>
+      <ul>
+        <li><strong>HBE even</strong> — the first chroma sample of the active line is <code>Cb</code>.</li>
+        <li><strong>HBE odd</strong> — the first chroma sample is <code>Cr</code>.</li>
+      </ul>
+
+      <h3>2.3 VI / memory interface (VI/MEM)</h3>
+      <p>The VI is a bus <em>master</em> on the main-memory interface. All reads are
+        <strong>cache-line sized (32 bytes)</strong> and return over the 64-bit data bus in
+        four back-to-back clocks.</p>
+      <table>
+        <tr><th>Signal</th><th>Description</th></tr>
+        <tr><td><code>vi_memAddr[28:5]</code></td><td>Cache-line aligned address of the read</td></tr>
+        <tr><td><code>vi_memReq</code></td><td>One-cycle request to enqueue a read</td></tr>
+        <tr><td><code>mem_viAck</code></td><td>One-cycle acknowledge; first 8 bytes return on this cycle</td></tr>
+        <tr><td><code>mem_viData[63:0]</code></td><td>64-bit data; a cache line arrives across 4 clocks</td></tr>
+        <tr><td><code>mem_viReqFull</code></td><td>Enhanced mode only — inhibit further requests while asserted</td></tr>
+      </table>
+      <p>In legacy (GameCube) mode the VI keeps <strong>one outstanding read request</strong>:
+        a new request is issued only after the previous one is acknowledged, and the picture
+        is always fetched in-order.</p>
+
+      <h2>3. Addressing and pixel geometry</h2>
+      <p>The VI derives every fetched word from a base pointer plus fields in the picture
+        configuration and base registers. It uses <strong>word</strong> units where one word
+        is <strong>16 pixels</strong> (one 32-byte cache line for 4:2:2 YUV at 2 bytes/pixel).</p>
+      <pre><code>word_per_line = ceil(picture_width / 16)                     // words per scan line
+
+FBB = picture_origin + x_offset/16 + y_offset * word_per_line   // base (in words)
+STD = 2 * word_per_line                                          // picture stride, words
+XOF = x_offset % 16                                              // pixel offset in first word
+WPL = ceil(XOF + display_width / 16)                             // fetched words per line</code></pre>
+      <p><code>STD</code> (stride), <code>WPL</code> (words/line) and <code>XOF</code> let the VI
+        window and <strong>pan</strong> the displayed region at pixel resolution without copying
+        data in main memory.</p>
+
+      <h3>3.1 Frame buffer format</h3>
+      <p>The external framebuffer (XFB) is stored as packed <strong>YUV 4:2:2</strong> (the
+        "Y1UY2V" layout), four bytes per two pixels:</p>
+      <pre><code>pixel pair  :  Y0  U0  Y1  V0
+byte offset :  +0  +1  +2  +3</code></pre>
+      <p>Each cache line (32 bytes) holds <strong>16 pixels</strong>. <code>Y</code> is clamped to
+        the legal video range, but during blanking <code>Y</code> is forced to zero and the Cb/Cr
+        positions carry the timing/status flags (see §4.3). Cb and Cr are averaged to 4:4:4
+        before filtering — this lets luma and chroma share control logic and stops a chroma read
+        from running ahead of the luma read.</p>
+
+      <h2>4. Video timing</h2>
+      <p>The heart of the VI is a <strong>timing generator</strong>: a vertical line counter and a
+        horizontal pixel counter running continuously at the <strong>27 MHz</strong> pixel clock
+        (13.5 MHz luma/chroma sample rate). Their outputs are decoded by a programmable decoder
+        that implements one of four modes — <strong>NTSC</strong>, <strong>PAL</strong>,
+        <strong>M-PAL</strong> and a <strong>debug</strong> mode (a reduced-size format for
+        bring-up and simulation).</p>
+
+      <h3>4.1 Horizontal timing</h3>
+      <table>
+        <tr><th>Symbol</th><th>Meaning</th><th>Register field</th></tr>
+        <tr><td><code>HLW</code></td><td>Half-line width (13.5 MHz clocks of a half line)</td><td><code>VI_HORIZ_TIMER0[9:0]</code></td></tr>
+        <tr><td><code>HCS</code></td><td>Horizontal blank start → colour-burst start</td><td><code>VI_HORIZ_TIMER0[30:24]</code></td></tr>
+        <tr><td><code>HCE</code></td><td>Horizontal blank start → colour-burst end</td><td><code>VI_HORIZ_TIMER0[22:16]</code></td></tr>
+        <tr><td><code>HSY</code></td><td>HSYNC width</td><td><code>VI_HORIZ_TIMER1[6:0]</code></td></tr>
+        <tr><td><code>HBE</code></td><td>Horizontal blank start → blanking end</td><td><code>VI_HORIZ_TIMER1[16:7]</code></td></tr>
+        <tr><td><code>HBS</code></td><td>Half-line reference → blank start</td><td><code>VI_HORIZ_TIMER1[26:17]</code></td></tr>
+      </table>
+
+      <h3>4.2 Vertical timing</h3>
+      <p>Vertical parameters are in <strong>half lines</strong>, except <code>ACV</code> which is in
+        <strong>full lines</strong> and is double-buffered (it changes at the start of the vertical
+        back porch, giving software a full vblank interval to update the mode).</p>
+      <table>
+        <tr><th>Symbol</th><th>Meaning</th><th>Location</th></tr>
+        <tr><td><code>EQU</code></td><td>Equalisation (and serration) pulse length</td><td><code>VI_VERT_TIMER[3:0]</code></td></tr>
+        <tr><td><code>ACV</code></td><td>Active video, full lines</td><td><code>VI_VERT_TIMER[13:4]</code></td></tr>
+        <tr><td><code>PRB</code></td><td>Pre-blanking, odd/even field (half lines)</td><td><code>VI_VERT_TIMER_ODD/EVEN[9:0]</code></td></tr>
+        <tr><td><code>PSB</code></td><td>Post-blanking, odd/even field (half lines)</td><td><code>VI_VERT_TIMER_ODD/EVEN[25:16]</code></td></tr>
+        <tr><td><code>BS1..4</code></td><td>Burst-blanking start for fields 1..4</td><td><code>VI_BLANK_ODD/EVEN</code></td></tr>
+        <tr><td><code>BE1..4</code></td><td>Burst-blanking end for fields 1..4</td><td><code>VI_BLANK_ODD/EVEN</code></td></tr>
+      </table>
+      <p>The vertical counter runs on a <strong>frame</strong> basis (interlace) or a
+        <strong>field</strong> basis (non-interlace). It is a <em>frame</em> line count — on a
+        525-line NTSC frame, vertical count 264 is the first full line of the second field and 525
+        is the last line; the four fields are numbered 1–4. In non-interlaced mode the same 1–525
+        numbering is retained even though only the odd fields are shown.</p>
+
+      <h3>4.3 Blanking / status flags</h3>
+      <p>During vertical blanking the timing flags ride on the Cb and Cr byte positions. They are
+        produced by the horizontal and vertical counters and are individually invertible via the
+        output-polarity register.</p>
+      <table>
+        <tr><th>Bit</th><th>Flag</th><th>Meaning (active low unless inverted)</th></tr>
+        <tr><td>7</td><td><code>C</code></td><td>Composite sync</td></tr>
+        <tr><td>6</td><td><code>F</code></td><td>Field flag — 0 for odd fields (1,3,…), 1 for even fields (2,4,…)</td></tr>
+        <tr><td>5</td><td><code>V</code></td><td>Vertical sync</td></tr>
+        <tr><td>4</td><td><code>H</code></td><td>Horizontal sync</td></tr>
+        <tr><td>3</td><td><code>B</code></td><td>Burst flag — active once per line where the colour burst sits</td></tr>
+        <tr><td>2</td><td><code>K</code></td><td>Burst-blank flag — blank the colour burst on this line</td></tr>
+        <tr><td>1</td><td><code>N</code></td><td>NTSC (0) vs PAL / M-PAL (1) mode flag</td></tr>
+        <tr><td>0</td><td><code>I</code></td><td>Interlace (0) vs non-interlace (1) flag</td></tr>
+      </table>
+
+      <h3>4.4 Nominal timing — NTSC (525 lines)</h3>
+      <table>
+        <tr><th>Symbol</th><th>Interlace</th><th>Non-interlace</th><th>Progressive (480p)</th></tr>
+        <tr><td><code>EQU</code></td><td>6</td><td>6</td><td>12</td></tr>
+        <tr><td><code>ACV</code></td><td>241</td><td>241</td><td>480</td></tr>
+        <tr><td><code>PRB</code> (odd/even)</td><td>24 / 25</td><td>24 / 24</td><td>44 / 44</td></tr>
+        <tr><td><code>PSB</code> (odd/even)</td><td>1 / 0</td><td>2 / 2</td><td>10 / 10</td></tr>
+        <tr><td><code>BS1..4</code></td><td>12/13/12/13</td><td>12/12/12/12</td><td>24/24/24/24</td></tr>
+        <tr><td><code>BE1..4</code></td><td>520/519/520/519</td><td>520/520/520/520</td><td>1038×4</td></tr>
+        <tr><td><code>HLW</code></td><td>429</td><td>429</td><td>—</td></tr>
+        <tr><td><code>HSY</code></td><td>64</td><td>64</td><td>—</td></tr>
+        <tr><td><code>HCS</code></td><td>71</td><td>71</td><td>—</td></tr>
+        <tr><td><code>HCE</code></td><td>105</td><td>105</td><td>—</td></tr>
+        <tr><td><code>HBE</code></td><td>162</td><td>162</td><td>—</td></tr>
+        <tr><td><code>HBS</code></td><td>373</td><td>373</td><td>—</td></tr>
+      </table>
+      <p>In non-interlaced NTSC only the odd fields are shown (≈ 60 Hz, but 263 lines per field
+        rather than 262.5). For progressive the <code>HBE</code>/<code>HBS</code> line-width values
+        are computed from the desired line width; the nominal 640-wide values are 162 and 373.</p>
+
+      <h3>4.5 Nominal timing — PAL (625 lines)</h3>
+      <table>
+        <tr><th>Symbol</th><th>Interlace</th><th>Non-interlace</th><th>Progressive</th></tr>
+        <tr><td><code>EQU</code></td><td>5</td><td>5</td><td>10</td></tr>
+        <tr><td><code>ACV</code></td><td>287</td><td>287</td><td>576</td></tr>
+        <tr><td><code>PRB</code> (odd/even)</td><td>35 / 36</td><td>35 / 35</td><td>58 / 58</td></tr>
+        <tr><td><code>PSB</code> (odd/even)</td><td>1 / 0</td><td>2 / 2</td><td>10 / 10</td></tr>
+        <tr><td><code>BS1..4</code></td><td>13/12/11/10</td><td>13/11/13/11</td><td>20/20/20/20</td></tr>
+        <tr><td><code>BE1..4</code></td><td>619/618/617/620</td><td>619/621/619/621</td><td>1240×4</td></tr>
+        <tr><td><code>HLW</code></td><td>432</td><td>432</td><td>—</td></tr>
+        <tr><td><code>HSY</code></td><td>64</td><td>64</td><td>—</td></tr>
+        <tr><td><code>HCS</code></td><td>75</td><td>75</td><td>—</td></tr>
+        <tr><td><code>HCE</code></td><td>106</td><td>106</td><td>—</td></tr>
+        <tr><td><code>HBE</code></td><td>172</td><td>172</td><td>—</td></tr>
+        <tr><td><code>HBS</code></td><td>380</td><td>380</td><td>—</td></tr>
+      </table>
+
+      <h3>4.6 Nominal timing — M-PAL</h3>
+      <table>
+        <tr><th>Symbol</th><th>Interlace</th><th>Non-interlace</th></tr>
+        <tr><td><code>EQU</code></td><td>6</td><td>6</td></tr>
+        <tr><td><code>ACV</code></td><td>241</td><td>241</td></tr>
+        <tr><td><code>PRB</code> (odd/even)</td><td>24 / 25</td><td>24 / 24</td></tr>
+        <tr><td><code>PSB</code> (odd/even)</td><td>1 / 0</td><td>2 / 2</td></tr>
+        <tr><td><code>BS1..4</code></td><td>16/15/14/13</td><td>16/14/16/14</td></tr>
+        <tr><td><code>BE1..4</code></td><td>518/517/516/519</td><td>518/520/518/520</td></tr>
+        <tr><td><code>HLW</code></td><td>429</td><td>429</td></tr>
+        <tr><td><code>HSY</code></td><td>64</td><td>64</td></tr>
+        <tr><td><code>HCS</code></td><td>78</td><td>78</td></tr>
+        <tr><td><code>HCE</code></td><td>112</td><td>112</td></tr>
+        <tr><td><code>HBE</code></td><td>162</td><td>162</td></tr>
+        <tr><td><code>HBS</code></td><td>373</td><td>373</td></tr>
+      </table>
+
+      <h3>4.7 Progressive mode</h3>
+      <p>The 525-line progressive (480p) mode uses a <strong>54 MHz</strong> video clock (selected by
+        the clock-select register) and produces the same line rate as NTSC (525 lines) or, if
+        programmed for 625, the same as PAL. Non-interlaced fields run at just under 60 fps (263
+        lines) / just under 50 fps (313 lines). There is <strong>no colour burst</strong> in
+        progressive mode, so <code>HCS</code>/<code>HCE</code> and <code>BS</code>/<code>BE</code>
+        are left unprogrammed.</p>
+
+      <h2>5. Register map</h2>
+      <p>The VI occupies <code>0xCC002000</code>–<code>0xCC002078</code> in the peripheral register
+        space (also mapped at <code>0x0C002000</code> in the uncached physical map). Each word is
+        16-bit; 32-bit registers are two adjacent words, high word first. Reset values are shown where
+        a defined power-on value exists (<code>–</code> means undefined/not initialised).</p>
+      <table>
+        <tr><th>Addr</th><th>W</th><th>Name</th><th>R/W</th><th>Description</th></tr>
+        <tr><td><code>0x00</code></td><td>16</td><td><code>VI_VERT_TIMER</code></td><td>R/W</td><td>Vertical timing — <code>EQU</code>, <code>ACV</code></td></tr>
+        <tr><td><code>0x02</code></td><td>16</td><td><code>VI_DISPLAY_CFG</code></td><td>R/W</td><td>Enable / reset / mode / gun-trigger enable</td></tr>
+        <tr><td><code>0x04</code></td><td>32</td><td><code>VI_HORIZ_TIMER0</code></td><td>R/W</td><td>Horizontal timing — <code>HLW</code>, <code>HCE</code>, <code>HCS</code></td></tr>
+        <tr><td><code>0x08</code></td><td>32</td><td><code>VI_HORIZ_TIMER1</code></td><td>R/W</td><td>Horizontal timing — <code>HSY</code>, <code>HBE</code>, <code>HBS</code></td></tr>
+        <tr><td><code>0x0C</code></td><td>32</td><td><code>VI_VERT_TIMER_ODD</code></td><td>R/W</td><td>Odd-field vertical blanking — <code>PRB</code>, <code>PSB</code></td></tr>
+        <tr><td><code>0x10</code></td><td>32</td><td><code>VI_VERT_TIMER_EVEN</code></td><td>R/W</td><td>Even-field vertical blanking — <code>PRB</code>, <code>PSB</code></td></tr>
+        <tr><td><code>0x14</code></td><td>32</td><td><code>VI_BLANK_ODD</code></td><td>R/W</td><td>Odd-field colour-burst blank interval — <code>BS1/3</code>, <code>BE1/3</code></td></tr>
+        <tr><td><code>0x18</code></td><td>32</td><td><code>VI_BLANK_EVEN</code></td><td>R/W</td><td>Even-field colour-burst blank interval — <code>BS2/4</code>, <code>BE2/4</code></td></tr>
+        <tr><td><code>0x1C</code></td><td>32</td><td><code>VI_TOP_BASE_L</code></td><td>R/W</td><td>Top-field (left) base pointer + pan</td></tr>
+        <tr><td><code>0x20</code></td><td>32</td><td><code>VI_TOP_BASE_R</code></td><td>R/W</td><td>Top-field right base pointer (3D mode)</td></tr>
+        <tr><td><code>0x24</code></td><td>32</td><td><code>VI_BOTTOM_BASE_L</code></td><td>R/W</td><td>Bottom-field (left) base pointer</td></tr>
+        <tr><td><code>0x28</code></td><td>32</td><td><code>VI_BOTTOM_BASE_R</code></td><td>R/W</td><td>Bottom-field right base pointer (3D mode)</td></tr>
+        <tr><td><code>0x2C</code></td><td>32</td><td><code>VI_RASTER_POS</code></td><td>RO</td><td>Current beam position (<code>HCT</code>, <code>VCT</code>)</td></tr>
+        <tr><td><code>0x30</code></td><td>32</td><td><code>VI_INT_0</code></td><td>R/W</td><td>Display interrupt 0</td></tr>
+        <tr><td><code>0x34</code></td><td>32</td><td><code>VI_INT_1</code></td><td>R/W</td><td>Display interrupt 1</td></tr>
+        <tr><td><code>0x38</code></td><td>32</td><td><code>VI_INT_2</code></td><td>R/W</td><td>Display interrupt 2</td></tr>
+        <tr><td><code>0x3C</code></td><td>32</td><td><code>VI_INT_3</code></td><td>R/W</td><td>Display interrupt 3</td></tr>
+        <tr><td><code>0x40</code></td><td>32</td><td><code>VI_LATCH_0</code></td><td>R/W</td><td>Light-gun latch 0</td></tr>
+        <tr><td><code>0x44</code></td><td>32</td><td><code>VI_LATCH_1</code></td><td>R/W</td><td>Light-gun latch 1</td></tr>
+        <tr><td><code>0x48</code></td><td>16</td><td><code>VI_PICTURE_CFG</code></td><td>R/W</td><td>Picture geometry — <code>STD</code>, <code>WPL</code></td></tr>
+        <tr><td><code>0x4A</code></td><td>16</td><td><code>VI_HSCALE</code></td><td>R/W</td><td>Horizontal-scaler step + enable</td></tr>
+        <tr><td><code>0x4C</code></td><td>32</td><td><code>VI_FILTER0</code></td><td>R/W</td><td>Filter taps <code>T0..T2</code></td></tr>
+        <tr><td><code>0x50</code></td><td>32</td><td><code>VI_FILTER1</code></td><td>R/W</td><td>Filter taps <code>T3..T5</code></td></tr>
+        <tr><td><code>0x54</code></td><td>32</td><td><code>VI_FILTER2</code></td><td>R/W</td><td>Filter taps <code>T6..T8</code></td></tr>
+        <tr><td><code>0x58</code></td><td>32</td><td><code>VI_FILTER3</code></td><td>R/W</td><td>Filter taps <code>T9..T12</code></td></tr>
+        <tr><td><code>0x5C</code></td><td>32</td><td><code>VI_FILTER4</code></td><td>R/W</td><td>Filter taps <code>T13..T16</code></td></tr>
+        <tr><td><code>0x60</code></td><td>32</td><td><code>VI_FILTER5</code></td><td>R/W</td><td>Filter taps <code>T17..T20</code></td></tr>
+        <tr><td><code>0x64</code></td><td>32</td><td><code>VI_FILTER6</code></td><td>R/W</td><td>Filter taps <code>T21..T24</code></td></tr>
+        <tr><td><code>0x6A</code></td><td>16</td><td><code>VI_OUTPOL</code></td><td>R/W</td><td>Output-polarity inversion of the control flags</td></tr>
+        <tr><td><code>0x6C</code></td><td>16</td><td><code>VI_CLOCK_SEL</code></td><td>R/W</td><td>27 MHz (0) vs 54 MHz (1) video clock</td></tr>
+        <tr><td><code>0x6E</code></td><td>16</td><td><code>VI_DTV_STATUS</code></td><td>RO</td><td>DTV/Conexant select-pin status</td></tr>
+        <tr><td><code>0x70</code></td><td>16</td><td><code>VI_WIDTH</code></td><td>R/W</td><td>Horizontal-scaler source width (<code>SRCWIDTH</code>)</td></tr>
+        <tr><td><code>0x72</code></td><td>16</td><td><code>VI_HBE656</code></td><td>R/W</td><td>Border/CCIR-656 blank-end + border enable</td></tr>
+        <tr><td><code>0x74</code></td><td>16</td><td><code>VI_HBS656</code></td><td>R/W</td><td>Border/CCIR-656 blank-start</td></tr>
+      </table>
+
+      <h2>6. Register fields</h2>
+      <h3>6.1 <code>VI_VERT_TIMER</code> (0x00, 16-bit)</h3>
+      <p>Vertical timing. <code>ACV</code> is double-buffered and takes effect at the start of the
+        vertical back porch.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>3:0</td><td><code>EQU</code></td><td>Equalisation-pulse length in half lines</td></tr>
+        <tr><td>13:4</td><td><code>ACV</code></td><td>Active video height in full lines</td></tr>
+      </table>
+
+      <h3>6.2 <code>VI_DISPLAY_CFG</code> (0x02, 16-bit)</h3>
+      <p>Configures and enables the VI. It is normally reset first so the counters and request logic
+        start from a known state. Reset value <code>0x0000</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>0</td><td><code>ENB</code></td><td>Enable video-timing generation and data request</td><td>0</td></tr>
+        <tr><td>1</td><td><code>RST</code></td><td>Clear all data requests and force the idle state</td><td>0</td></tr>
+        <tr><td>2</td><td><code>NIN</code></td><td>0 = interlace, 1 = non-interlace (only top field shown)</td><td>0</td></tr>
+        <tr><td>3</td><td><code>DLR</code></td><td>3D display mode select</td><td>0</td></tr>
+        <tr><td>5:4</td><td><code>LE0</code></td><td>Latch-enable for gun 0 (0=off, 1=1 field, 2=2 fields, 3=always)</td><td>0</td></tr>
+        <tr><td>7:6</td><td><code>LE1</code></td><td>Latch-enable for gun 1</td><td>0</td></tr>
+        <tr><td>9:8</td><td><code>FMT</code></td><td>0=NTSC, 1=PAL, 2=M-PAL, 3=Debug (CCIR-656)</td><td>0</td></tr>
+      </table>
+
+      <h3>6.3 <code>VI_HORIZ_TIMER0</code> (0x04, 32-bit)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>9:0</td><td><code>HLW</code></td><td>Half-line width</td></tr>
+        <tr><td>22:16</td><td><code>HCE</code></td><td>Horizontal blank start → colour-burst end</td></tr>
+        <tr><td>30:24</td><td><code>HCS</code></td><td>Horizontal blank start → colour-burst start</td></tr>
+      </table>
+
+      <h3>6.4 <code>VI_HORIZ_TIMER1</code> (0x08, 32-bit)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>6:0</td><td><code>HSY</code></td><td>Horizontal-sync width</td></tr>
+        <tr><td>16:7</td><td><code>HBE</code></td><td>Horizontal blank start → blanking end</td></tr>
+        <tr><td>26:17</td><td><code>HBS</code></td><td>Half-line reference → blank start</td></tr>
+      </table>
+
+      <h3>6.5 <code>VI_VERT_TIMER_ODD</code> / <code>EVEN</code> (0x0C / 0x10, 32-bit)</h3>
+      <p><code>PRB</code>/<code>PSB</code> are double-buffered.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>9:0</td><td><code>PRB</code></td><td>Pre-blanking, half lines (odd field in the low words)</td></tr>
+        <tr><td>25:16</td><td><code>PSB</code></td><td>Post-blanking, half lines</td></tr>
+      </table>
+
+      <h3>6.6 <code>VI_BLANK_ODD</code> / <code>EVEN</code> (0x14 / 0x18, 32-bit)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>4:0</td><td><code>BS1</code></td><td>Field 1 → burst-blanking start (half lines)</td></tr>
+        <tr><td>15:5</td><td><code>BE1</code></td><td>Field 1 → burst-blanking end (half lines)</td></tr>
+        <tr><td>20:16</td><td><code>BS3</code></td><td>Field 3 → burst-blanking start (half lines)</td></tr>
+        <tr><td>31:21</td><td><code>BE3</code></td><td>Field 3 → burst-blanking end (half lines)</td></tr>
+      </table>
+      <p><code>VI_BLANK_EVEN</code> uses the same layout for fields 2 (<code>BS2</code>/<code>BE2</code>)
+        and 4 (<code>BS4</code>/<code>BE4</code>).</p>
+
+      <h3>6.7 <code>VI_TOP_BASE_L</code> (0x1C, 32-bit)</h3>
+      <p>Display origin of the top (odd) field in 2D mode, or the left picture in 3D mode.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>23:0</td><td><code>FBB</code></td><td>Frame-buffer address (in words)</td></tr>
+        <tr><td>27:24</td><td><code>XOF</code></td><td>Horizontal pixel offset of the left-most pixel inside the first word</td></tr>
+        <tr><td>28</td><td><code>HIGH</code></td><td>0 = 24-bit address (lower 24 MB); 1 = full 28-bit address (512 MB)</td></tr>
+      </table>
+      <p>The 3D/right variants carry only the 24-bit <code>FBB</code>; the right pointers are unused in
+        2D mode.</p>
+
+      <h3>6.8 <code>VI_RASTER_POS</code> (0x2C, 32-bit, read-only)</h3>
+      <p>Current beam position. <code>HCT</code> runs 1..pixels-per-line, reset to 1 at the start of
+        every line; <code>VCT</code> runs on a frame basis 1..lines-per-frame, and is 1 at the start of
+        pre-equalisation.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>10:0</td><td><code>HCT</code></td><td>Horizontal count (pixels)</td></tr>
+        <tr><td>26:16</td><td><code>VCT</code></td><td>Vertical count (lines)</td></tr>
+      </table>
+
+      <h3>6.9 <code>VI_INT_0</code>..<code>VI_INT_3</code> (0x30/0x34/0x38/0x3C, 32-bit)</h3>
+      <p>Four programmable display interrupts, each with its own enable and status bit. The interrupt
+        is cleared by writing a zero to the <code>INT</code> status bit. Any of them also raises the VI
+        master interrupt in the PI, used by the OS as the single retrace callback.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>10:0</td><td><code>HCT</code></td><td>Horizontal count at which to fire</td><td>0</td></tr>
+        <tr><td>26:16</td><td><code>VCT</code></td><td>Vertical count at which to fire</td><td>0</td></tr>
+        <tr><td>28</td><td><code>ENB</code></td><td>Interrupt enabled</td><td>0</td></tr>
+        <tr><td>31</td><td><code>INT</code></td><td>Interrupt active status (1 = pending)</td><td>0</td></tr>
+      </table>
+
+      <h3>6.10 <code>VI_LATCH_0</code> / <code>VI_LATCH_1</code> (0x40 / 0x44, 32-bit)</h3>
+      <p>Light-gun latches. They capture the display position at the rising edge of the gun-trigger
+        input; the trigger flag is set and cleared by writing zero.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>10:0</td><td><code>HCT</code></td><td>Horizontal count at trigger</td><td>0</td></tr>
+        <tr><td>26:16</td><td><code>VCT</code></td><td>Vertical count at trigger</td><td>0</td></tr>
+        <tr><td>31</td><td><code>TRG</code></td><td>Trigger flag</td><td>0</td></tr>
+      </table>
+
+      <h3>6.11 <code>VI_PICTURE_CFG</code> (0x48, 16-bit)</h3>
+      <p>Picture geometry. The hardware reset value is undefined; the system library
+        programs <code>0x2828</code> on initialisation.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>7:0</td><td><code>STD</code></td><td>Stride per line, in words</td></tr>
+        <tr><td>14:8</td><td><code>WPL</code></td><td>Number of reads (words) per line</td></tr>
+      </table>
+
+      <h3>6.12 <code>VI_HSCALE</code> (0x4A, 16-bit)</h3>
+      <p>Horizontal scaler. Reset value <code>0x0100</code> (step 256, scaler off).</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>8:0</td><td><code>STP</code></td><td>Stepper step size, U1.8</td><td>0x100 (256)</td></tr>
+        <tr><td>12</td><td><code>HS_EN</code></td><td>Horizontal-scaler enable</td><td>0</td></tr>
+      </table>
+
+      <h3>6.13 <code>VI_FILTER0</code>..<code>VI_FILTER6</code> (0x4C, 0x50, 0x54, 0x58, 0x5C, 0x60, 0x64; 32-bit)</h3>
+      <p>The 6-tap × 8-phase resampling filter is symmetric, so only half is programmed. The first
+        three tables hold the "centre" taps <code>T0..T8</code> in <code>[0.0, 2.0)</code> as unsigned
+        <code>U1.9</code>:</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th></tr>
+        <tr><td>9:0</td><td><code>T0</code> (U1.9)</td></tr>
+        <tr><td>19:10</td><td><code>T1</code></td></tr>
+        <tr><td>29:20</td><td><code>T2</code></td></tr>
+      </table>
+      <p><code>VI_FILTER0</code> = <code>T0,T1,T2</code>; <code>VI_FILTER1</code> =
+        <code>T3,T4,T5</code>; <code>VI_FILTER2</code> = <code>T6,T7,T8</code>.
+        <code>VI_FILTER3..6</code> hold the "outer" taps <code>T9..T24</code> in the signed range
+        <code>[-0.125, 0.125)</code> as <code>S-2.9</code>, four 8-bit taps per table. <code>T24</code>
+        (in <code>VI_FILTER6</code>) is hard-wired to zero.</p>
+
+      <h3>6.14 <code>VI_OUTPOL</code> (0x6A, 16-bit)</h3>
+      <p>Inverts each outgoing control flag individually. Reset <code>0x0000</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>I_POL</code></td><td>Invert interlace flag</td></tr>
+        <tr><td>1</td><td><code>N_POL</code></td><td>Invert NTSC flag</td></tr>
+        <tr><td>2</td><td><code>K_POL</code></td><td>Invert burst-blank flag</td></tr>
+        <tr><td>3</td><td><code>B_POL</code></td><td>Invert burst flag</td></tr>
+        <tr><td>4</td><td><code>H_POL</code></td><td>Invert HSYNC flag</td></tr>
+        <tr><td>5</td><td><code>V_POL</code></td><td>Invert VSYNC flag</td></tr>
+        <tr><td>6</td><td><code>F_POL</code></td><td>Invert field flag</td></tr>
+        <tr><td>7</td><td><code>C_POL</code></td><td>Invert composite-sync flag</td></tr>
+      </table>
+
+      <h3>6.15 <code>VI_CLOCK_SEL</code> (0x6C, 16-bit)</h3>
+      <p>Selects the video clock. Reset <code>0x0000</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>VICLKSEL</code></td><td>0 = 27 MHz, 1 = 54 MHz (progressive only)</td></tr>
+      </table>
+
+      <h3>6.16 <code>VI_DTV_STATUS</code> (0x6E, 16-bit, read-only)</h3>
+      <p>Returns the state of the DTV/Conexant selection pins (<code>VISEL[1:0]</code>).</p>
+
+      <h3>6.17 <code>VI_WIDTH</code> (0x70, 16-bit)</h3>
+      <p>The number of <em>source</em> pixels to be scaled — used only when the horizontal scaler is
+        enabled (e.g. 320 when scaling 320→640).</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>9:0</td><td><code>SRCWIDTH</code></td><td>Source pixel count</td></tr>
+      </table>
+
+      <h3>6.18 <code>VI_HBE656</code> (0x72, 16-bit)</h3>
+      <p>Border/CCIR-656 blank-end. In debug/CCIR-656 mode the encoder may only accept 720 active
+        pixels, so the border registers implement a black border: the border <code>HBE</code>/<code>HBS</code>
+        can be programmed for the encoder's 720-active-pixel window while the main <code>HBE</code>/<code>HBS</code>
+        still reflect the real active width.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>9:0</td><td><code>HBE656</code></td><td>Border horizontal-blank-end</td><td>0</td></tr>
+        <tr><td>15</td><td><code>BRDR_EN</code></td><td>Border enable</td><td>0</td></tr>
+      </table>
+
+      <h3>6.19 <code>VI_HBS656</code> (0x74, 16-bit)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>9:0</td><td><code>HBS656</code></td><td>Border horizontal-blank-start</td></tr>
+      </table>
+
+      <h2>7. Horizontal scaler</h2>
+      <p>The scaler lets a small frame buffer be stretched horizontally to the display width. It is a
+        <strong>6-tap</strong> resampling filter with <strong>eight</strong> phases per tap plus a zero tap
+        (49 taps in total).</p>
+      <ul>
+        <li>Y, Cb and Cr are buffered in three shift registers; the first and last pixels are replicated
+          at the boundaries so the filter always has a full neighbourhood.</li>
+        <li>A <strong>stepper</strong> is incremented by the step size for every output pixel. The low
+          8 bits of the stepper are rounded to 3 bits to select the filter phase; the single bit immediately
+          left of the binary point, when it toggles, shifts a new input pixel into the registers.</li>
+        <li>The datapath is time-shared between the three components (the video clock is twice the pixel rate).</li>
+      </ul>
+      <pre><code>step_size = floor(256 * destination_size / source_size) / 256</code></pre>
+      <p>The step size and coefficients are programmed through the register interface; the cut-off
+        frequency, pass-band ripple and stop-band attenuation are therefore software-controlled. Because
+        the filter is symmetric, only half the coefficients are stored: the centre 16 in <code>[0,2.0)</code>
+        and the outer 32 in <code>[-0.125,0.125)</code>.</p>
+      <p><strong>Default taps.</strong> The system library programs a default 24-tap filter when the VI is
+        initialised (the scaler is left disabled). The un-packed tap values are:</p>
+      <pre><code>T0  T1  T2  T3  T4  T5  T6  T7
+0.969 0.922 0.840 0.727 0.578 0.428 0.278 0.137
+T8  T9  T10 T11 T12 T13 T14 T15
+0.023 0.442 0.397 0.375 0.405 0.434 0.461 0.461
+T16 T17 T18 T19 T20 T21 T22 T23
+0.492 0.016 0.029 0.037 0.037 0.029 0.023 0.016</code></pre>
+      <p>The three <code>VI_FILTER0..2</code> tables store <code>T0..T8</code>; the four
+        <code>VI_FILTER3..6</code> tables store <code>T9..T23</code>; <code>T24</code> is hard-wired to
+        zero. The default source width programmed by the OS is 640.</p>
+
+      <h2>8. Gun-trigger (light-gun) and 3D display</h2>
+      <h3>8.1 Gun trigger</h3>
+      <p>Two inputs latch the current beam position. The latch-enable field (<code>LE0</code>/<code>LE1</code>)
+        is double-buffered, so it becomes active on the next field. Three sampling modes exist:</p>
+      <ul>
+        <li><strong>one-field</strong> — armed for one field, auto-disarms on trigger or time-out;</li>
+        <li><strong>two-field</strong> — armed for two fields, same auto-disarm;</li>
+        <li><strong>continuous</strong> — armed until explicitly disabled.</li>
+      </ul>
+      <p>Only the <em>first</em> trigger within a field is latched; later triggers in that field are ignored.</p>
+      <h3>8.2 3D display</h3>
+      <p>Two frame buffers (left and right) can be merged into one stream that alternates between the two
+        pictures every two pixels. The left/right base and bottom-base registers hold the second picture
+        pointer; the right picture is unused in 2D mode.</p>
+
+      <h2>9. Emulator notes</h2>
+      <p>To model the VI in software:</p>
+      <ol>
+        <li><strong>Clock.</strong> The VI pixel clock is 27 MHz; the horizontal counter advances every
+          27 MHz tick (13.5 MHz luma/chroma). In progressive mode the clock is 54 MHz.</li>
+        <li><strong>Counters.</strong> Maintain a horizontal counter (pixels per line, 1-based) and a
+          vertical counter (lines per frame, 1-based, reset at pre-equalisation). Derive HSYNC, HBLANK,
+          colour-burst and the active window from <code>HCS/HCE/HSY/HBE/HBS</code>; derive VSYNC, VBLANK,
+          field/frame number and equalisation/serration from <code>EQU/ACV/PRB/PSB/BS/BE</code>.</li>
+        <li><strong>Field/frame.</strong> The field flag toggles each field; combine interlaced fields with
+          the standard half-line offset. In non-interlace only the odd field is shown, on the same 1..525 basis.</li>
+        <li><strong>Fetch.</strong> Issue 32-byte cache-line reads from the computed <code>FBB</code> with the
+          stride <code>STD</code>; <code>XOF</code>/<code>WPL</code> give the per-line fetch window.</li>
+        <li><strong>Pixel format.</strong> Each cache line is 16 pixels:
+          <code>Y0 U0 Y1 V0 Y2 U1 Y3 V1 …</code> (4 bytes per pixel pair); <code>U</code>/<code>V</code> are
+          the Cb/Cr chroma.</li>
+        <li><strong>Scaler.</strong> When <code>HS_EN</code> is set, resample horizontally with the 6-tap ×
+          8-phase filter using the programmed <code>STP</code> (step) and <code>SRCWIDTH</code> (source
+          count); the default step is 0x100 and the default taps are given above.</li>
+        <li><strong>Interrupt / retrace.</strong> <code>VI_INT_0..3</code> fire on matched
+          <code>HCT</code>/<code>VCT</code>; any of them also raises the VI master interrupt, which the OS
+          uses as the "retrace" callback. It is cleared by writing a zero to the <code>INT</code> status bit.</li>
+      </ol>
+
+      <h2>10. Related specifications</h2>
+      <ul>
+        <li><a href="flipper.html">Flipper chipset</a></li>
+        <li><a href="clock-generator.html">Clock generator</a></li>
+        <li><a href="motherboard.html">Motherboard &amp; connectors</a></li>
+        <li><a href="disk-drive.html">Disc drive</a></li>
+        <li><a href="peripherals.html">Peripherals (EXI &amp; SI)</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

@@ -24,6 +24,7 @@ Flipper.
 | 4 | Flipper chipset | [flipper.md](flipper.md) | northbridge + GPU + audio DSP + I/O; memory arbitration & protection; graphics pipeline; DSP/AI; VI; boot/reset |
 | 5 | Disk Drive | [disk-drive.md](disk-drive.md) | 3" mini-DVD, CAV, copy protection, intelligent MN-10200 drive, DI interface & signals, streaming audio |
 | 6 | Peripheral devices (EXI, SI) | [peripherals.md](peripherals.md) | EXI channels/devices/transfer modes, SI channels/polling, controller protocol & hardware |
+| 7 | Video Interface (VI) | [video-interface.md](video-interface.md) | scan-out engine; full register map; H/V timing tables; horizontal scaler/filter; light-gun & 3D; emulator model |
 
 ## Key system parameters (quick reference)
 
