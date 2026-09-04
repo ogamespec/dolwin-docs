@@ -1,4 +1,4 @@
-# dolwin-docs
+# gamecube-specs
 
 There are accompanying materials that were used in the development process. The HW folder contains more or less coherent GAMECUBE documentation. In the RE folder is located Reverse Engineering of various software for GAMECUBE, as well as DSP UCodes and IPL BIOS reversing.
 
