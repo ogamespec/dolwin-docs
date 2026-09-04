@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — IBM Gekko CPU</title>
+  <meta name="description" content="GameCube Gekko processor: 486 MHz PowerPC 750 derivative, caches, locked cache, write-gather buffer, Paired-Single SIMD and MMU." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Gekko CPU</p>
+      <h1>IBM Gekko Processor</h1>
+      <blockquote>The Gekko is the console's CPU: a PowerPC 750-derived 32-bit
+        processor with custom IBM extensions for the GameCube.</blockquote>
+
+      <h2>1. General characteristics</h2>
+      <table>
+        <tr><th>Parameter</th><th>Value</th></tr>
+        <tr><td>Vendor / design</td><td>IBM, based on the PowerPC 750CXe</td></tr>
+        <tr><td>Process</td><td>0.18 µm CMOS with copper interconnects</td></tr>
+        <tr><td>Die size</td><td>≈ 40 mm²</td></tr>
+        <tr><td>Transistors</td><td>≈ 21 million</td></tr>
+        <tr><td>Power</td><td>≈ 5 W</td></tr>
+        <tr><td>Core clock</td><td><strong>486 MHz</strong> (3 × the 162 MHz bus)</td></tr>
+        <tr><td>Performance</td><td>≈ 1125 MIPS; scalar FPU ≈ 1.9 GFLOPS, peak ≈ 10.5 GFLOPS (Paired-Single)</td></tr>
+      </table>
+
+      <h2>2. Register model</h2>
+      <ul>
+        <li><strong>32 × 32-bit</strong> general-purpose registers (<code>r0–r31</code>; <code>r1</code> is the stack pointer).</li>
+        <li><strong>32 × 64-bit</strong> floating-point registers (<code>f0–f31</code>).</li>
+        <li><strong>Condition register (CR)</strong>, <strong>MSR</strong>, <strong>FPSCR</strong> and ≈ 60 <strong>SPRs</strong>.</li>
+        <li>Full PowerPC integer, floating-point, load/store, branch and system instruction set.</li>
+      </ul>
+
+      <h2>3. Cache hierarchy</h2>
+      <table>
+        <tr><th>Cache</th><th>Size</th><th>Notes</th></tr>
+        <tr><td>L1 instruction</td><td>32 KB</td><td>—</td></tr>
+        <tr><td>L1 data</td><td>32 KB</td><td>8-way set-associative, physically addressed</td></tr>
+        <tr><td>L2</td><td>256 KB</td><td>on-die unified data cache</td></tr>
+      </table>
+
+      <h3>3.1 Locked cache (LC) mode</h3>
+      <p>The data cache can split so that <strong>16 KB</strong> stays a normal 4-way
+        cache and the other <strong>16 KB</strong> becomes a software-managed
+        <strong>locked cache</strong> (scratchpad):</p>
+      <ul>
+        <li>Enabled by <code>HID2[LCE]</code>.</li>
+        <li>Lines allocated with <code>dcbz_l</code> (typically at <code>0xE0000000</code>, mapped by a DBAT).</li>
+        <li><code>dcbi</code> / <code>dcbf</code> deallocate; pseudo-LRU reallocates when the set is exhausted.</li>
+        <li>Switching between normal and locked mode is slow (~50 µs).</li>
+      </ul>
+
+      <h3>3.2 Write-gather buffer (WBUF)</h3>
+      <p>A small buffer (~4 × 32-byte lines) that collects single-beat stores to one
+        physical address and emits a <strong>32-byte burst</strong> once full.</p>
+      <ul>
+        <li>Enabled by <code>HID2[WPE]</code>; address set in <strong>WPAR</strong> (SPR 921).</li>
+        <li>Targeted at <code>0x0C008000</code>, the burst feeds the GFX command FIFO.</li>
+      </ul>
+
+      <h2>4. Paired Single (SIMD)</h2>
+      <p>Gekko's distinctive extension: a 64-bit FP register is treated as
+        <strong>two 32-bit singles</strong>, so two single-precision operations run in
+        parallel. Dedicated paired-single instructions roughly double scalar FPU
+        throughput — the source of the ~10.5 GFLOPS peak.</p>
+
+      <h2>5. Memory management unit (MMU)</h2>
+      <ul>
+        <li>Separate <strong>data (DMMU)</strong> and <strong>instruction (IMMU)</strong> units.</li>
+        <li><strong>Block address translation</strong> via <code>DBAT/IBAT</code> — used exclusively by Dolphin OS.</li>
+        <li><strong>Segment registers</strong> + page-table translation (GC-Linux, direct-ARAM tricks).</li>
+        <li><strong>TLB</strong>: 128-entry, two-way set-associative per MMU.</li>
+        <li>Unmapped access → MMU exception; protected main-memory region → Flipper MI interrupt.</li>
+      </ul>
+
+      <h2>6. Clocks</h2>
+      <p>The core clock comes from an on-die <strong>PLL</strong>, whose multiplier is
+        selected by the <code>PLL_EXT</code>/<code>PLL_CFG[0:3]</code> strap pins
+        (2×–16× plus bypass modes).</p>
+
+      <h2>7. Related specifications</h2>
+      <ul>
+        <li><a href="motherboard.html">Motherboard &amp; connectors</a></li>
+        <li><a href="flipper.html">Flipper chipset</a></li>
+        <li><a href="peripherals.html">Peripherals (EXI &amp; SI)</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

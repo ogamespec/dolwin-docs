@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Peripherals (EXI &amp; SI)</title>
+  <meta name="description" content="GameCube peripheral interfaces: Expansion Interface (EXI) and Serial Interface (SI) — channels, transfers, controllers, memory cards, broadband, modem and the controller protocol." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Peripherals</p>
+      <h1>Peripheral Devices (EXI, SI)</h1>
+      <blockquote>This section covers the two on-chip peripheral interfaces in the
+        Flipper IO block: the <strong>Expansion Interface (EXI)</strong> and the
+        <strong>Serial Interface (SI)</strong>. The controller (SI) and
+        memory-card/extended (EXI) hardware lives inside Flipper.</blockquote>
+
+      <h2>1. Expansion Interface (EXI)</h2>
+      <p>EXI is the general-purpose peripheral bus, wired to the console's external
+        connectors and a few on-chip peripherals.</p>
+      <h3>1.1 Channels and devices</h3>
+      <p>There are <strong>three</strong> independent EXI channels, each with a
+        selectable clock rate (16 / 8 / 4 / 2 / 1 MHz) and its own chip selects:</p>
+      <table>
+        <tr><th>Channel</th><th>Typical device</th></tr>
+        <tr><td><strong>EXI0</strong></td><td>CS0_0 = internal boot ROM / RTC; CS0_1 = internal flash ROM; CS0_2 = external device (modem, broadband adapter)</td></tr>
+        <tr><td><strong>EXI1</strong></td><td>CS1_0 = external device (modem, etc. — serial port 1)</td></tr>
+        <tr><td><strong>EXI2</strong></td><td>CS2_0 = external debugger (serial port 2)</td></tr>
+      </table>
+      <p>EXI0 is the <strong>16-bit / highest-bandwidth</strong> channel and is used by
+        the Broadband Adapter and the modem. It also contains the <strong>descrambler</strong>
+        for the boot ROM and drives an internal <strong>32 MHz</strong> line that is
+        electromagnetically isolated from the slower external line.</p>
+
+      <h3>1.2 Transfer modes</h3>
+      <ul>
+        <li><strong>Immediate</strong> — small (1–4 byte) transfers between a CPU
+          register and the device, full-duplex (send and receive simultaneously). Used
+          for command/status register traffic.</li>
+        <li><strong>DMA</strong> — bulk data between <strong>main memory</strong> and the
+          device, staged through a <strong>32-byte</strong> internal buffer. Used for
+          large blocks and memory cards.</li>
+      </ul>
+
+      <h3>1.3 Interrupts and presence</h3>
+      <p>Each channel can raise a <strong>transfer-complete</strong> interrupt and, for
+        external-device channels, an <strong>EXT_INT</strong> on <code>EXT_IN</code> edge
+        to detect insertion/removal. A device must be <strong>selected</strong> (chip
+        select + clock frequency) before a transfer; the OS driver performs a
+        probe/lock/unlock handshake.</p>
+
+      <h3>1.4 Register map</h3>
+      <p>EXI registers live at physical <code>0x0C006800</code>, one 20-byte (5-word)
+        block per channel:</p>
+      <table>
+        <tr><th>Word</th><th>Register</th><th>Purpose</th></tr>
+        <tr><td>+0x00</td><td><code>EXInSTAT</code></td><td>Status/control: clock, device select, interrupt flags</td></tr>
+        <tr><td>+0x04</td><td><code>EXInDATA</code></td><td>Immediate-mode data/command</td></tr>
+        <tr><td>+0x08</td><td><code>EXInCTRL</code></td><td>Transfer control (length, immediate/DMA, start)</td></tr>
+        <tr><td>+0x0C</td><td><code>EXInMAR</code></td><td>DMA memory address (32-byte aligned)</td></tr>
+        <tr><td>+0x10</td><td><code>EXInLEN</code></td><td>DMA length</td></tr>
+      </table>
+
+      <h2>2. Serial Interface (SI)</h2>
+      <p>SI handles the four <strong>controller</strong> ports and the keyboard. It is at
+        physical <code>0x0C006400</code> (32-bit registers).</p>
+      <h3>2.1 Channels and buffers</h3>
+      <p>There are <strong>four</strong> SI channels. Each has:</p>
+      <ul>
+        <li>An <strong>output buffer</strong> — one command byte + two output data bytes
+          (<code>CMD</code>, <code>OUTPUT0</code>, <code>OUTPUT1</code>), double buffered.</li>
+        <li>An <strong>input buffer</strong> (high + low) — up to <strong>8</strong>
+          response bytes plus per-transfer error/status bits, double buffered with a
+          locking read sequence.</li>
+      </ul>
+
+      <h3>2.2 Polling and communication</h3>
+      <ul>
+        <li><strong>Polling</strong> — the hardware periodically polls enabled channels
+          every <code>X</code> horizontal video lines, <code>Y</code> times per frame,
+          from vertical blank (<code>SIPOLL</code>). <code>VBCPYn</code> defers output
+          buffer writes to the next blank (for 3D shutter glasses).</li>
+        <li><strong>Communication (SICOM)</strong> — a general-purpose multi-byte transfer
+          to a single channel's registers, with programmable lengths (0 = 128 bytes) and
+          start/complete reporting.</li>
+      </ul>
+
+      <h3>2.3 Errors and clock lock</h3>
+      <p><code>SISR</code> reports per channel: no-response (device absent), collision,
+        overrun and underrun, plus write/read status. <code>SIEXILK</code> prevents the
+        software from setting the EXI clock to 32 MHz (SI shares the EXI clock tree).</p>
+
+      <h3>2.4 SI register summary</h3>
+      <table>
+        <tr><th>Register</th><th>Offset</th><th>Purpose</th></tr>
+        <tr><td><code>SIC0..3OUTBUF</code></td><td>0x00, 0x0C, 0x18, 0x24</td><td>Per-channel output command/data</td></tr>
+        <tr><td><code>SICxINBUFH/L</code></td><td>0x04/0x08, …</td><td>Per-channel response + error bits</td></tr>
+        <tr><td><code>SIPOLL</code></td><td>0x30</td><td>Polling X/Y and per-channel enable / vblank-copy</td></tr>
+        <tr><td><code>SICOMCSR</code></td><td>0x34</td><td>Communication control/status</td></tr>
+        <tr><td><code>SISR</code></td><td>0x38</td><td>Per-channel status/error bits</td></tr>
+        <tr><td><code>SIEXILK</code></td><td>0x3C</td><td>EXI clock lock</td></tr>
+      </table>
+
+      <h2>3. Controller (the SI device)</h2>
+      <p>The GameCube controller is an <strong>intelligent</strong> device that responds to
+        short command/response packets. Communication is serial, <strong>half-duplex</strong>,
+        over a <strong>single data line</strong> using <strong>pulse-width
+        (duty-cycle) modulation</strong>, <strong>big-endian</strong>. It has:</p>
+      <ul>
+        <li><strong>Two analog sticks</strong> (left main + right "C" stick).</li>
+        <li><strong>Two analog triggers</strong> (L, R) with a digital "click" at full press.</li>
+        <li><strong>Digital buttons</strong> A, B, X, Y, Z and Start, plus a <strong>D-pad</strong>.</li>
+        <li>A <strong>rumble motor</strong> (host-controlled).</li>
+        <li>Auto-calibration of the analog peripherals.</li>
+      </ul>
+
+      <h2>4. Devices on the peripheral bus</h2>
+      <ul>
+        <li><strong>Memory cards</strong> (two slots) — EXI devices; 512 KB / 2 MB / 8 MB at retail.</li>
+        <li><strong>Broadband Adapter (BBA)</strong> — 10BASE-T Ethernet, on the parallel/EXI0 port.</li>
+        <li><strong>Modem</strong> — serial port / EXI1.</li>
+        <li><strong>Boot ROM, flash ROM, RTC and settings SRAM</strong> — on-chip EXI0 devices.</li>
+        <li><strong>Keyboard</strong> — via SI.</li>
+        <li><strong>Game Boy Advance</strong> — through the controller/SI port as a second screen/controller.</li>
+        <li><strong>Game Boy Player</strong> — the add-on that emulates Game Boy consoles (uses EXI).</li>
+      </ul>
+
+      <h2>5. Related specifications</h2>
+      <ul>
+        <li><a href="motherboard.html">Motherboard &amp; connectors</a></li>
+        <li><a href="flipper.html">Flipper chipset</a></li>
+        <li><a href="gekko.html">IBM Gekko CPU</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
