@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Flipper Chipset</title>
+  <meta name="description" content="GameCube Flipper chipset: northbridge, GPU, audio DSP and I/O controller. Memory arbitration, graphics pipeline, DSP, audio and video." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Flipper</p>
+      <h1>Flipper Chipset</h1>
+      <blockquote><strong>Flipper</strong> is the single ASIC that is the console's
+        northbridge, graphics processor, audio DSP and I/O controller. Designed by
+        <strong>ArtX</strong> (led by Wei Yen, largely ex-SGI); ArtX was acquired by
+        <strong>ATI</strong> late in the design, but the Flipper was already complete.</blockquote>
+
+      <h2>1. Role and connection</h2>
+      <p>Physically Flipper sits between the Gekko CPU, the main 1T-SRAM, the ARAM
+        SDRAM, the disc drive, the audio DAC, the video encoder and every peripheral
+        connector. It is reached by the CPU only over the Gekko–Flipper bus
+        (32-bit address / 64-bit data, 162 MHz) and hosts all memory-mapped hardware
+        registers.</p>
+      <table>
+        <tr><th>Block</th><th>Function</th></tr>
+        <tr><td><strong>PI</strong></td><td>Register space host on the Gekko bus; interrupts; reset/clock; PI FIFO</td></tr>
+        <tr><td><strong>MI / MEM</strong></td><td>Memory hub/arbiter for every main-memory user</td></tr>
+        <tr><td><strong>CP</strong></td><td>Command processor: reads GFX command stream + display lists, fetches vertex attributes</td></tr>
+        <tr><td><strong>XF</strong></td><td>Transform/geometry: vertex transform, lighting, clipping (fixed-point)</td></tr>
+        <tr><td><strong>SU</strong></td><td>Triangle setup</td></tr>
+        <tr><td><strong>RAS0/1/2</strong></td><td>Primitive, texture-coordinate and color rasterizers</td></tr>
+        <tr><td><strong>Bump</strong></td><td>Bump-mapping matrix/directive unit</td></tr>
+        <tr><td><strong>TC / eTM</strong></td><td>Texture cache and texture memory (TMEM), texture addressing, LOD</td></tr>
+        <tr><td><strong>TF</strong></td><td>Texture filter (bilinear/trilinear, etc.)</td></tr>
+        <tr><td><strong>TEV</strong></td><td>Per-pixel color/alpha combine, fog, indirect texturing</td></tr>
+        <tr><td><strong>PE</strong></td><td>Pixel engine: color/Z compare, blending, <strong>eFB</strong>, framebuffer copy/scaling</td></tr>
+        <tr><td><strong>IO</strong></td><td>IO_PI (register I/F), SI, AI, EXI, DI, IO_MEM (peripheral DMA)</td></tr>
+        <tr><td><strong>VI</strong></td><td>Framebuffer readout, H/V scaler, TV encoding</td></tr>
+        <tr><td><strong>DSP</strong></td><td>16-bit audio signal processor</td></tr>
+      </table>
+
+      <h2>2. Memory interface (MI) and protection</h2>
+      <p>The MI is the arbitration hub. Its bus users (masters) are:
+        <strong>PI</strong> (Gekko), <strong>CP</strong> (GFX command processor),
+        <strong>TC</strong> (texture cache), <strong>PE</strong> (pixel engine),
+        <strong>IO</strong> (peripheral DMA), <strong>DSP</strong> and
+        <strong>VI</strong> (video), plus write-buffer and SDRAM/ARAM controller paths.</p>
+      <table>
+        <tr><th>Address</th><th>Size</th><th>Resource</th></tr>
+        <tr><td><code>0x00000000</code></td><td>24 MB</td><td>Main RAM (1T-SRAM)</td></tr>
+        <tr><td><code>0x08000000</code></td><td>2 MB</td><td>Embedded framebuffer (EFB)</td></tr>
+        <tr><td><code>0x0C000000</code></td><td>—</td><td>Command Processor (CP)</td></tr>
+        <tr><td><code>0x0C001000</code></td><td>—</td><td>Pixel Engine (PE)</td></tr>
+        <tr><td><code>0x0C002000</code></td><td>—</td><td>Video Interface (VI)</td></tr>
+        <tr><td><code>0x0C003000</code></td><td>—</td><td>Peripheral Interface (PI)</td></tr>
+        <tr><td><code>0x0C004000</code></td><td>—</td><td>Memory Interface (MI)</td></tr>
+        <tr><td><code>0x0C005000</code></td><td>—</td><td>DSP + Audio + ARAM DMA</td></tr>
+        <tr><td><code>0x0C006000</code></td><td>—</td><td>Disc Interface (DI)</td></tr>
+        <tr><td><code>0x0C006400</code></td><td>—</td><td>Serial Interface (SI)</td></tr>
+        <tr><td><code>0x0C006800</code></td><td>—</td><td>External Interface (EXI)</td></tr>
+        <tr><td><code>0x0C006C00</code></td><td>—</td><td>Audio Streaming (AIS)</td></tr>
+        <tr><td><code>0x0C008000</code></td><td>—</td><td>GFX command FIFO (PI/CP FIFO)</td></tr>
+        <tr><td><code>0xFFF00000</code></td><td>1 MB</td><td>Boot ROM</td></tr>
+      </table>
+      <p>MI provides protection for up to <strong>4 regions</strong> of main memory
+        (1024-byte pages, access modes deny/read-only/write-only/full), each raising a
+        dedicated interrupt on violation. Because the bus only carries 64-bit
+        transactions, an uncached byte/halfword store writes a full 8-byte block (a
+        quirk that software can exploit for fast memory clearing).</p>
+
+      <h2>3. Graphics processor (GFX)</h2>
+      <p>The GFX is a <strong>fixed-function</strong> pipeline (no programmable shading)
+        with three stages: command processor, geometry/lighting, and rasterizer.</p>
+      <ul>
+        <li><strong>Command processor:</strong> on-chip FIFO (32-byte chunks), a call
+          FIFO for display lists (no nesting), a vertex cache; vertex attributes from
+          stream or arrays in main memory (incl. fixed-point).</li>
+        <li><strong>Geometry:</strong> fixed-point math; <strong>8</strong> hardware RGBA
+          lights (diffuse/specular), angle &amp; distance attenuation, toon shading,
+          bump mapping, 64-entry matrix RAM (plus dual-texture transform).</li>
+        <li><strong>Rasterizer:</strong>
+          <ul>
+            <li><strong>24-bit RGB</strong> color, <strong>24-bit Z</strong>.</li>
+            <li><strong>Embedded framebuffer (EFB)</strong>: <strong>2 MB</strong> 1T-SRAM,
+              native ≈ <strong>640×528</strong>; drawing happens here, then copied (optionally
+              scaled/filtered) to an external framebuffer (<strong>XFB</strong>) in RAM for TV output.</li>
+            <li><strong>Texture memory (TMEM)</strong>: <strong>2 MB</strong> with a cache;
+              textures up to <strong>1024×1024</strong>; formats include indexed TLUT,
+              RGB565, RGB5A3, RGBA, IA4/8 and S3TC; alpha, 3D and indirect texturing.</li>
+            <li><strong>Multitexturing</strong> up to 16 texture sets; mip-mapping,
+              bilinear/trilinear, anisotropic up to 4×.</li>
+            <li>Fog, blending, gamma correction.</li>
+            <li>Stated performance ≈ <strong>6–12 M polygons/s</strong> (~100–200 k triangles/frame).</li>
+          </ul>
+        </li>
+      </ul>
+      <h3>3.1 GFX→Gekko FIFOs</h3>
+      <ul>
+        <li><strong>PI FIFO</strong> — Gekko side; CPU writes burst stores to
+          <code>0x0C008000</code>, write pointer advances by 32 bytes with wrap-around
+          control (<code>CPBAS</code>/<code>CPTOP</code>/<code>CPWRT</code>/<code>CPABT</code>).</li>
+        <li><strong>CP FIFO</strong> — GFX side; command processor reads the stream from
+          main memory (base/top/watermarks/pointers).</li>
+      </ul>
+
+      <h2>4. Audio DSP and Audio Interface</h2>
+      <h3>4.1 DSP</h3>
+      <p>A 16-bit <strong>Macronix</strong> DSP at <strong>81 MHz</strong> (1/6 CPU clock).</p>
+      <ul>
+        <li><strong>8 KB</strong> instruction RAM (IRAM) + <strong>8 KB</strong> instruction ROM (IROM) — IMEM.</li>
+        <li><strong>8 KB</strong> data RAM (DRAM) + <strong>4 KB</strong> data ROM (DROM, coefficients) — DMEM.</li>
+        <li>Custom ADPCM decoder, ARAM accelerator, DMA to main memory, mailbox registers for CPU communication.</li>
+        <li>Mixes 64+ 3D-positioned channels with reverb, echo and per-channel ADSR, in parallel with CPU and GFX.</li>
+      </ul>
+      <h3>4.2 Audio Interface</h3>
+      <ul>
+        <li><strong>AI DMA</strong> streams PCM from main memory in <strong>32-byte</strong>
+          blocks into a 32-byte FIFO drained at <strong>32/48 kHz</strong> stereo; SRC keeps the stream at 48 kHz.</li>
+        <li><strong>Auxiliary/streaming (AIS)</strong> receives DVD audio bitstream and converts to 48 kHz.</li>
+        <li>Output pins <code>aid</code>/<code>ailr</code>/<code>aiclk</code> drive the stereo DAC.</li>
+      </ul>
+
+      <h2>5. Video Interface (VI)</h2>
+      <p>VI reads the XFB from main memory, performs horizontal scaling and optional
+        filtering/antialiasing, and drives the TV encoder. It generates the vertical-blank
+        interrupt (programmable to any beam position), supports light-gun latching
+        (<code>guntrg</code>), interlaced, double-strike and <strong>progressive (480p)</strong>
+        modes, PAL/NTSC/M-PAL/PAL60 output, and stores the video buffer in Y1UY2V-packed format.</p>
+
+      <h2>6. Boot ROM / reset</h2>
+      <p>Flipper generates the Gekko reset vector (<code>0xFFF00100</code>) and reset
+        signal. The IPL reads the 2 MB encrypted boot ROM (exposed on EXI0 and
+        descrambled by Flipper), which holds the initialisation code, the system menu
+        and language fonts.</p>
+
+      <h2>7. Related specifications</h2>
+      <ul>
+        <li><a href="motherboard.html">Motherboard &amp; connectors</a></li>
+        <li><a href="gekko.html">IBM Gekko CPU</a></li>
+        <li><a href="disk-drive.html">Disc drive</a></li>
+        <li><a href="peripherals.html">Peripherals (EXI &amp; SI)</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

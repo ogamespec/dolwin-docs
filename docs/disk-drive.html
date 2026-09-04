@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Disc Drive</title>
+  <meta name="description" content="GameCube disc drive: 3 inch mini-DVD, CAV, copy protection, intelligent MN-10200 drive, DI interface and signals, streamed DVD audio." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Disc Drive</p>
+      <h1>Disk Drive</h1>
+      <blockquote>The console reads games from a proprietary <strong>3" mini-DVD</strong>
+        (Nintendo's "GameCube Game Disc"). The drive is an intelligent,
+        command-driven device built around a small CPU with firmware, developed
+        with Matsushita, and controlled by the Flipper <strong>Disk Interface (DI)</strong>.</blockquote>
+
+      <h2>1. Media characteristics</h2>
+      <table>
+        <tr><th>Parameter</th><th>Value</th></tr>
+        <tr><td>Format</td><td>3" mini-DVD, Matsushita technology</td></tr>
+        <tr><td>Capacity</td><td><strong>1,459,978,240 bytes</strong> (~1.5 GB)</td></tr>
+        <tr><td>Rotation</td><td><strong>Constant Angular Velocity (CAV)</strong></td></tr>
+        <tr><td>Density</td><td>constant; sectors spiral edge→centre</td></tr>
+        <tr><td>Read rate</td><td>≈ 2–3 MB/s (~13× CD-ROM)</td></tr>
+        <tr><td>Audio</td><td>streamed <strong>DVD-Audio</strong>, ADPCM, <strong>48 kHz</strong></td></tr>
+      </table>
+      <p>A proprietary copy-protection scheme (unlike CSS on standard DVDs) combines
+        <strong>non-standard barcodes</strong> with <strong>encryption of the sector
+        data</strong>, decrypted on the fly by the DVD controller. A GameCube disc
+        cannot be read on ordinary PC optical drives.</p>
+
+      <h2>2. Drive architecture</h2>
+      <p>The drive is an <strong>intelligent device</strong>: it contains a
+        microcontroller from the <strong>MN-10200</strong> family running proprietary
+        firmware from an internal ROM. The console therefore talks to it
+        <strong>at the command level</strong>, and the drive performs its own
+        copy-protection de/encryption internally. Two interaction modes are exposed:</p>
+      <ol>
+        <li><strong>Immediate commands</strong> — quick control (motor, DVD-audio stream, register access).</li>
+        <li><strong>DI DMA</strong> — bulk data transfer between disc and main memory
+          (the normal path); all transfers are 32-byte aligned.</li>
+      </ol>
+
+      <h2>3. Disk Interface (DI)</h2>
+      <p>The DI register block is at physical <code>0x0C006000</code> (32-bit registers).</p>
+      <table>
+        <tr><th>Register</th><th>Offset</th><th>Purpose</th></tr>
+        <tr><td><code>DISR</code></td><td>0x00</td><td>Status: break &amp; transfer-complete interrupts/masks, device error, break request</td></tr>
+        <tr><td><code>DICVR</code></td><td>0x04</td><td>Cover/loose-lid status and interrupt</td></tr>
+        <tr><td><code>DICMDBUF0..2</code></td><td>0x08–0x10</td><td>12-byte command packet</td></tr>
+        <tr><td><code>DIMAR</code></td><td>0x14</td><td>DMA memory address (32-byte aligned)</td></tr>
+        <tr><td><code>DILENGTH</code></td><td>0x18</td><td>DMA transfer length (bytes, 32-byte aligned)</td></tr>
+        <tr><td><code>DICR</code></td><td>0x1C</td><td>Control: read/write, DMA/immediate, transfer start</td></tr>
+        <tr><td><code>DIIMMBUF</code></td><td>0x20</td><td>Immediate-mode register data</td></tr>
+        <tr><td><code>DICFG</code></td><td>0x24</td><td>Drive configuration latched at reset</td></tr>
+      </table>
+
+      <h2>4. DI signals (signal level)</h2>
+      <table>
+        <tr><th>Signal</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>DIDD[7:0]</code></td><td>I/O</td><td>8-bit data bus, direction via <code>DIDIR</code>; latches reset configuration</td></tr>
+        <tr><td><code>DIDIR</code></td><td>O</td><td>Data-bus direction (0 = Flipper→drive, 1 = drive→Flipper)</td></tr>
+        <tr><td><code>DIHSTRB</code></td><td>O</td><td>Host strobe (qualifies data when writing; "ready" when reading)</td></tr>
+        <tr><td><code>DIDSTRB</code></td><td>I</td><td>Device strobe (qualifies data when reading; "ready" when writing)</td></tr>
+        <tr><td><code>DIERR</code></td><td>I</td><td>Error from the drive; halts the current command, may interrupt</td></tr>
+        <tr><td><code>DIBRK</code></td><td>I/O</td><td>Break signal (open-drain, external pull-up) to interrupt a transfer</td></tr>
+        <tr><td><code>DICOVER</code></td><td>I</td><td>Drive cover switch; high = open</td></tr>
+        <tr><td><code>DIRST</code></td><td>O</td><td>Drive reset (from the PI general reset register)</td></tr>
+      </table>
+
+      <h2>5. DVD-Audio streaming (AIS)</h2>
+      <table>
+        <tr><th>Signal</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>AISD</code></td><td>I</td><td>Serial left/right audio bitstream from the drive</td></tr>
+        <tr><td><code>AISLR</code></td><td>O</td><td>Frame/left-right signal at 32/48 kHz; also gates data flow</td></tr>
+        <tr><td><code>AISCLK</code></td><td>O</td><td>Free-running bit clock for <code>AISD</code></td></tr>
+      </table>
+      <p>The stream is sample-rate-converted to 48 kHz by the Audio Interface before mixing.</p>
+
+      <h2>6. Related specifications</h2>
+      <ul>
+        <li><a href="motherboard.html">Motherboard &amp; connectors</a></li>
+        <li><a href="flipper.html">Flipper chipset</a></li>
+        <li><a href="peripherals.html">Peripherals (EXI &amp; SI)</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

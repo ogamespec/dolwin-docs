@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nintendo GameCube — Hardware Specifications</title>
+  <meta name="description" content="Architectural overview and specifications of the Nintendo GameCube hardware: Gekko CPU, Flipper chipset, memory, disc drive and peripherals." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text">
+        <span>GameCube Specs</span>
+        <small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small>
+      </span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span id="theme-label">Theme</span>
+      <label class="switch">
+        <input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <span class="big-cube"></span>
+      <h1>Nintendo GameCube Hardware</h1>
+      <p class="lead">
+        An architectural overview of the retail <strong>HW2 (Dolphin)</strong> board —
+        the Gekko CPU, the Flipper chipset, the memory subsystem, the disc drive and
+        the peripheral interfaces — gathered from the hardware documentation, chip
+        RTL and reverse-engineering sources in this repository.
+      </p>
+      <span class="tagline">Specified at the signal level · light &amp; dark themes</span>
+    </section>
+
+    <section class="grid" aria-label="Architecture sections">
+      <a class="card" href="motherboard.html">
+        <span class="card-icon" data-glyph="▦"></span>
+        <h3>Motherboard &amp; Connectors</h3>
+        <p>Board layout, the 162&nbsp;MHz system bus, Flipper device pins, and the
+           disc-drive / peripheral connector signal maps.</p>
+      </a>
+      <a class="card" href="gekko.html">
+        <span class="card-icon" data-glyph="⚙"></span>
+        <h3>IBM Gekko CPU</h3>
+        <p>486&nbsp;MHz PowerPC&nbsp;750 derivative: caches, locked cache,
+           write-gather buffer, Paired-Single SIMD, MMU and clocking.</p>
+      </a>
+      <a class="card" href="flipper.html">
+        <span class="card-icon" data-glyph="◈"></span>
+        <h3>Flipper Chipset</h3>
+        <p>The single ASIC that is northbridge, GPU, audio DSP and I/O controller —
+           memory arbitration, the fixed-function graphics pipeline, DSP and video.</p>
+      </a>
+      <a class="card" href="disk-drive.html">
+        <span class="card-icon" data-glyph="⌿"></span>
+        <h3>Disc Drive</h3>
+        <p>The intelligent Matsushita 3" mini-DVD drive: media, copy protection,
+           DI interface, signals and streamed DVD audio.</p>
+      </a>
+      <a class="card" href="peripherals.html">
+        <span class="card-icon" data-glyph="⌁"></span>
+        <h3>Peripherals (EXI &amp; SI)</h3>
+        <p>The Expansion Interface and Serial Interface: channels, transfers,
+           controllers, memory cards, broadband &amp; modem, and the controller protocol.</p>
+      </a>
+    </section>
+
+    <section class="stats">
+      <h2>Key system parameters</h2>
+      <div class="stat-grid">
+        <div class="stat"><b>486 MHz</b><span>Gekko CPU</span></div>
+        <div class="stat"><b>162 MHz</b><span>System bus / Flipper</span></div>
+        <div class="stat"><b>24 MB</b><span>Main 1T-SRAM (2×12 MB)</span></div>
+        <div class="stat"><b>16 MB</b><span>ARAM (auxiliary DRAM)</span></div>
+        <div class="stat"><b>2 MB</b><span>Embedded framebuffer</span></div>
+        <div class="stat"><b>1.3 GB/s</b><span>Bus bandwidth</span></div>
+        <div class="stat"><b>81 MHz</b><span>Audio DSP &amp; ARAM</span></div>
+        <div class="stat"><b>1.46 GB</b><span>Disc capacity</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
+  </footer>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

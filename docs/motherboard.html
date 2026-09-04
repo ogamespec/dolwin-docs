@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Motherboard &amp; Connectors</title>
+  <meta name="description" content="GameCube motherboard layout, system bus, Flipper device pins and connector signal maps." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Motherboard</p>
+      <h1>Motherboard, Connectors &amp; Components</h1>
+      <blockquote>Scope: the retail <strong>HW2</strong> production board
+        (codename <strong>Dolphin</strong>). Earlier developer boards are not covered.</blockquote>
+
+      <h2>1. Board layout</h2>
+      <p>The console is built around two large ICs on the main CPU board
+        (stamped <code>DOL-CPUP-01</code>), plus a few memory/auxiliary chips. All
+        system logic except the TV-out encoder path sits inside one ASIC,
+        <strong>Flipper</strong>.</p>
+      <table>
+        <tr><th>Block</th><th>Part</th><th>Role</th></tr>
+        <tr><td>CPU</td><td>IBM <strong>Gekko</strong></td><td>PowerPC 750-derivative, 486 MHz</td></tr>
+        <tr><td>System ASIC</td><td><strong>Flipper</strong></td><td>Northbridge + GPU + audio DSP + I/O</td></tr>
+        <tr><td>Main memory</td><td>2 × 12 MB MoSys <strong>1T-SRAM</strong> ("Splash")</td><td>24 MB, 64-bit interface</td></tr>
+        <tr><td>Auxiliary memory</td><td>16 MB DRAM (<strong>ARAM</strong>)</td><td>DSP/audio + texture streaming</td></tr>
+        <tr><td>Boot ROM + RTC + SRAM</td><td>2 MB encrypted boot chip</td><td>IPL, menu, RTC, settings SRAM</td></tr>
+        <tr><td>Disc drive</td><td><strong>DVD drive unit</strong> (DDU)</td><td>Matsushita 3" mini-DVD</td></tr>
+        <tr><td>Clocking</td><td>27 MHz crystal + clock gen</td><td>System and video clock sources</td></tr>
+      </table>
+      <p>Total system memory is therefore <strong>24 MB</strong> of fast 1T-SRAM plus
+        <strong>16 MB</strong> of slower ARAM — <strong>40 MB</strong> in all.</p>
+
+      <h2>2. System buses</h2>
+      <ul>
+        <li><strong>32-bit</strong> address bus, <strong>64-bit</strong> data bus.</li>
+        <li>Bus clock <strong>162 MHz</strong> (one third of the 486 MHz CPU).</li>
+        <li>Sustained bandwidth ≈ <strong>1.3 GB/s</strong>.</li>
+        <li>Transaction sizes: 1, 2, 4, 8 and 32 bytes (32-byte <strong>burst</strong> for cache fills and write-gather).</li>
+        <li>ARAM: separate <strong>8-bit</strong> cable at <strong>81 MHz</strong>,
+          ≈ 80 MB/s, reached only via DMA.</li>
+      </ul>
+
+      <h2>3. Flipper device pins</h2>
+      <table>
+        <tr><th>Group</th><th>Signals</th><th>Notes</th></tr>
+        <tr><td>CPU interface</td><td><code>cpua[31:0]</code>, <code>cpud[63:0]</code>, <code>cpuintb</code>, <code>cputsiz[2:0]</code>, <code>cputt[4:0]</code>, <code>cputsiz</code>, <code>cpuaackb</code>, <code>cpurstb</code></td><td>32-bit address / 64-bit data</td></tr>
+        <tr><td>Main memory</td><td><code>mema[21:0]</code>, <code>memd[63:0]</code>, <code>memclk</code>, <code>memclkb</code>, <code>memckq</code>, <code>memads</code>, <code>memmsk</code>, <code>memref</code>, <code>memrstb</code>, <code>memrw</code></td><td>64-bit, 22-bit address</td></tr>
+        <tr><td>ARAM (SDRAM)</td><td><code>sda[12:0]</code>, <code>sdd[7:0]</code>, <code>sdba</code>, <code>sdclk</code>, <code>sdcsb</code>, <code>sdcasb</code>, <code>sdrasb</code>, <code>sdweb</code>, <code>sddqm</code>, <code>sdintb</code></td><td>8-bit data</td></tr>
+        <tr><td>Drive (DI)</td><td><code>did[7:0]</code>, <code>didir</code>, <code>dihstrbb</code>, <code>didstrbb</code>, <code>dierrb</code>, <code>dibrk</code>, <code>dicover</code>, <code>dirstb</code></td><td>Command/data to DVD drive</td></tr>
+        <tr><td>Audio out (AI)</td><td><code>aid</code>, <code>ailr</code>, <code>aiclk</code></td><td>Serial PCM to DAC</td></tr>
+        <tr><td>Audio stream in (AIS)</td><td><code>aisd</code>, <code>aislr</code>, <code>aisclk</code></td><td>Streamed DVD audio</td></tr>
+        <tr><td>Video out (VI)</td><td><code>vid[7:0]</code>, <code>viclk27</code>, <code>viclk54</code>, <code>viclkin</code>, <code>vicr</code>, <code>visel</code></td><td>8-bit digital video, 27/54 MHz</td></tr>
+        <tr><td>EXI0</td><td><code>exi0clk0/1</code>, <code>exi0csb[2:0]</code>, <code>exi0di0/1</code>, <code>exi0do0/1</code>, <code>exi0extin</code>, <code>exi0intb</code></td><td>16-bit peripheral, 3 chip selects</td></tr>
+        <tr><td>EXI1 / EXI2</td><td><code>exi1clk</code>, <code>exi1csb</code>, <code>exi1di/do</code>, <code>exi1extin</code>, <code>exi1intb</code>; <code>exi2clk</code>, <code>exi2csb</code>, <code>exi2di/do</code>, <code>exi2intb</code></td><td>Modem and debugger channels</td></tr>
+        <tr><td>Controller (SI)</td><td><code>sidi0..3</code>, <code>sido0..3</code></td><td>Four controller channels</td></tr>
+        <tr><td>Light gun</td><td><code>guntrg[1:0]</code></td><td>Two trigger inputs</td></tr>
+        <tr><td>Debug</td><td><code>tck</code>, <code>tdi</code>, <code>tdo</code>, <code>tms</code>, <code>tse</code>, <code>tmd</code>, <code>etmd</code>, <code>dbgintb</code></td><td>JTAG / ETM</td></tr>
+        <tr><td>Reset / PLL</td><td><code>rstinb</code>, <code>rstswb</code>, <code>lock</code>, <code>byppll</code>, <code>clk</code>, <code>clko</code></td><td>Reset switch, PLL lock/bypass</td></tr>
+      </table>
+
+      <h2>4. System connectors</h2>
+      <h3>4.1 Disc drive connector (P9)</h3>
+      <p>A 32-pin header carrying drive control/data and +5 V power (pads 2, 4, 6, 8)
+        plus grounds.</p>
+      <table>
+        <tr><th>Pad</th><th>Signal</th><th>Pad</th><th>Signal</th></tr>
+        <tr><td>1</td><td>AISLR</td><td>16</td><td>Ground</td></tr>
+        <tr><td>3</td><td>AISD</td><td>17</td><td>DID7</td></tr>
+        <tr><td>5</td><td>AISCLK</td><td>19</td><td>DID6</td></tr>
+        <tr><td>7</td><td>DIHSTRB</td><td>21</td><td>DID5</td></tr>
+        <tr><td>9</td><td>DIERR</td><td>23</td><td>DID4</td></tr>
+        <tr><td>11</td><td>DIBRK</td><td>25</td><td>DID3</td></tr>
+        <tr><td>12</td><td>DICOVER</td><td>27</td><td>DID2</td></tr>
+        <tr><td>13</td><td>DIDSTRB</td><td>28</td><td>MONI</td></tr>
+        <tr><td>14</td><td>DIRST</td><td>29</td><td>DID1</td></tr>
+        <tr><td>15</td><td>DIDIR</td><td>30</td><td>MONOUT</td></tr>
+        <tr><td>—</td><td>—</td><td>31</td><td>DID0</td></tr>
+      </table>
+
+      <h3>4.2 Controller ports (SI)</h3>
+      <p>Four identical ports, one per SI channel. Serial, <strong>half-duplex</strong>,
+        over a <strong>single data line</strong> using <strong>pulse-width
+        (duty-cycle) modulation</strong>, transferred <strong>big-endian</strong>.
+        The controller is an intelligent device.</p>
+
+      <h3>4.3 Peripheral ports (EXI)</h3>
+      <ul>
+        <li><strong>Parallel / high-speed</strong> — EXI0, the 16-bit highest-bandwidth
+          channel; three chip selects reach the internal boot ROM/RTC, internal flash
+          ROM, and an external device (modem, broadband adapter). Contains the boot-ROM
+          descrambler.</li>
+        <li><strong>Serial port 1</strong> — EXI1 (e.g. a modem).</li>
+        <li><strong>Serial port 2</strong> — EXI2 (external debug hardware).</li>
+        <li><strong>Two memory card slots</strong> — wired to the EXI bus;
+          512 KB / 2 MB / 8 MB at retail.</li>
+      </ul>
+
+      <h2>5. Power and physical</h2>
+      <ul>
+        <li>Power adapter: <strong>DC 12 V × 3.5 A</strong>.</li>
+        <li>Dimensions: ≈ 4.3″ (h) × 5.9″ (w) × 6.3″ (d).</li>
+      </ul>
+
+      <h2>6. Related specifications</h2>
+      <ul>
+        <li><a href="gekko.html">IBM Gekko CPU</a></li>
+        <li><a href="flipper.html">Flipper chipset</a></li>
+        <li><a href="disk-drive.html">Disc drive</a></li>
+        <li><a href="peripherals.html">Peripherals (EXI &amp; SI)</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

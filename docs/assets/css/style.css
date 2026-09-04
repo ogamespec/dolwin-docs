@@ -1,0 +1,308 @@
+/* ============================================================
+   GameCube Hardware Specifications — shared stylesheet
+   Theme: styled after the Nintendo GameCube "indigo" cube logo.
+   ============================================================ */
+
+/* ---------- Design tokens ---------- */
+:root {
+  --gc-indigo:        #4b44a9;
+  --gc-indigo-deep:   #332c7a;
+  --gc-indigo-bright: #7b6bff;
+  --gc-purple:        #6c5ce7;
+  --gc-gold:          #f5c518;
+
+  /* Light theme */
+  --bg:            #f3f2fb;
+  --bg-soft:       #ffffff;
+  --surface:       #ffffff;
+  --surface-2:     #efedf9;
+  --text:          #23223a;
+  --text-soft:     #5a587a;
+  --border:        #d9d6ee;
+  --shadow:        rgba(75, 68, 169, 0.12);
+  --accent:        var(--gc-indigo);
+  --accent-contrast:#ffffff;
+  --nav-bg:        rgba(244, 243, 251, 0.92);
+  --code-bg:       #eeeef7;
+  --code-text:     #2b2a4a;
+  --table-head:    #e7e4f6;
+  --card-grad-a:   #ffffff;
+  --card-grad-b:   #efedf9;
+}
+
+[data-theme="dark"] {
+  --bg:            #14142b;
+  --bg-soft:       #1b1b36;
+  --surface:       #1e1e3a;
+  --surface-2:     #26264a;
+  --text:          #e8e8f6;
+  --text-soft:     #a8a6cf;
+  --border:        #333360;
+  --shadow:        rgba(0, 0, 0, 0.45);
+  --accent:        var(--gc-indigo-bright);
+  --accent-contrast:#14142b;
+  --nav-bg:        rgba(20, 20, 43, 0.92);
+  --code-bg:       #191936;
+  --code-text:     #d9d6f2;
+  --table-head:    #2b2b52;
+  --card-grad-a:   #22224a;
+  --card-grad-b:   #2b2b5a;
+}
+
+/* ---------- Base ---------- */
+* { box-sizing: border-box; }
+html {
+  scroll-behavior: smooth;
+  background: var(--bg);
+}
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .25s ease, color .25s ease;
+}
+main.wrap { flex: 1 0 auto; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ---------- Header / nav ---------- */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1.4rem;
+  background: var(--nav-bg);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--text);
+}
+.brand:hover { text-decoration: none; }
+.brand .cube {
+  width: 34px;
+  height: 34px;
+  display: block;
+}
+.brand .brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+.brand .brand-text small {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.app-nav {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  margin-left: 0.6rem;
+}
+.app-nav a {
+  color: var(--text-soft);
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.app-nav a:hover { color: var(--accent); text-decoration: none; }
+.app-nav a.active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* Theme toggle */
+.theme-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-soft);
+}
+.switch { position: relative; display: inline-block; width: 46px; height: 26px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+  position: absolute; inset: 0; cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; transition: .25s;
+}
+.slider::before {
+  content: ""; position: absolute; height: 20px; width: 20px;
+  left: 2px; top: 2px; background: var(--accent); border-radius: 50%;
+  transition: .25s;
+}
+.switch input:checked + .slider::before { transform: translateX(20px); }
+
+/* ---------- Layout ---------- */
+.wrap { max-width: 1080px; margin: 0 auto; padding: 2rem 1.4rem 4rem; }
+.hero {
+  text-align: center;
+  padding: 3rem 1rem 2.4rem;
+}
+.hero .big-cube { width: 108px; height: 118px; margin: 0 auto 1.4rem; display: block; }
+.hero h1 {
+  font-size: 2.3rem;
+  margin: 0 0 0.6rem;
+  letter-spacing: .01em;
+}
+.hero p.lead { font-size: 1.12rem; color: var(--text-soft); max-width: 680px; margin: 0 auto; }
+.hero .tagline {
+  display: inline-block;
+  margin-top: 1.1rem;
+  padding: 0.35rem 1rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* ---------- Cards ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.2rem;
+  margin-top: 2rem;
+}
+.card {
+  display: block;
+  background: linear-gradient(160deg, var(--card-grad-a), var(--card-grad-b));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.4rem 1.4rem 1.5rem;
+  color: var(--text);
+  box-shadow: 0 6px 20px var(--shadow);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.card:hover {
+  transform: translateY(-4px);
+  text-decoration: none;
+  border-color: var(--accent);
+  box-shadow: 0 14px 34px var(--shadow);
+}
+.card .card-icon {
+  width: 46px; height: 46px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--gc-indigo); color: #fff; margin-bottom: 0.9rem;
+}
+.card h3 { margin: 0 0 0.4rem; font-size: 1.18rem; }
+.card p { margin: 0; color: var(--text-soft); font-size: 0.95rem; }
+
+/* ---------- Stats band ---------- */
+.stats { margin: 2.6rem 0 1rem; }
+.stats h2 { font-size: 1.3rem; }
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.1rem;
+}
+.stat b { display: block; font-size: 1.35rem; color: var(--accent); }
+.stat span { color: var(--text-soft); font-size: 0.86rem; }
+
+/* ---------- Article / content ---------- */
+article { font-size: 1.02rem; }
+article h1 { margin-top: 0; }
+article h2 {
+  margin: 2rem 0 0.8rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 1.5rem;
+}
+article h3 { margin: 1.6rem 0 0.5rem; font-size: 1.16rem; color: var(--accent); }
+article h4 { margin: 1.1rem 0 0.4rem; }
+article p { margin: 0.7rem 0; }
+
+article table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.94rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+article th, article td {
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+article th { background: var(--table-head); font-weight: 700; }
+article tr:last-child td { border-bottom: none; }
+article td:last-child, article th:last-child { border-right: none; }
+
+article code {
+  background: var(--code-bg);
+  color: var(--code-text);
+  border-radius: 6px;
+  padding: 0.1rem 0.35rem;
+  font-family: "Consolas", "SFMono-Regular", Menlo, monospace;
+  font-size: 0.9em;
+}
+article pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+article pre code { background: none; padding: 0; }
+
+article blockquote {
+  margin: 1rem 0;
+  padding: 0.7rem 1rem;
+  border-left: 4px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: 0 10px 10px 0;
+  color: var(--text-soft);
+}
+article ul, article ol { padding-left: 1.4rem; }
+
+/* ---------- Footer ---------- */
+.app-footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1.6rem 1.4rem;
+}
+
+/* ---------- Utility ---------- */
+.crumb { color: var(--text-soft); font-size: 0.85rem; }
+.pill { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border); font-size: 0.8rem; }
+
+@media (max-width: 720px) {
+  .app-nav { display: none; }
+  .hero h1 { font-size: 1.7rem; }
+}
