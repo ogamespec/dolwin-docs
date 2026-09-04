@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GameCube Hardware — Video Interface (VI)</title>
   <meta name="description" content="GameCube Video Interface (VI): the scan-out engine that reads the external framebuffer and generates TV timing. Register map, H/V timing, horizontal scaler, light-gun and emulator model." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
   <link rel="stylesheet" href="assets/css/style.css" />
 </head>
 <body>
@@ -331,6 +332,9 @@ byte offset :  +0  +1  +2  +3</code></pre>
       </table>
 
       <h3>6.3 <code>VI_HORIZ_TIMER0</code> (0x04, 32-bit)</h3>
+      <p>Horizontal timing, part 1. <code>HLW</code> is the width of a half line;
+        <code>HCE</code>/<code>HCS</code> mark where the colour burst ends and begins
+        relative to the horizontal sync reference. Reset value undefined.</p>
       <table>
         <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
         <tr><td>9:0</td><td><code>HLW</code></td><td>Half-line width</td></tr>
@@ -339,6 +343,9 @@ byte offset :  +0  +1  +2  +3</code></pre>
       </table>
 
       <h3>6.4 <code>VI_HORIZ_TIMER1</code> (0x08, 32-bit)</h3>
+      <p>Horizontal timing, part 2. <code>HSY</code> is the sync-pulse width, while
+        <code>HBE</code> and <code>HBS</code> define the blanking interval (where pixels
+        are suppressed) relative to the sync and half-line references. Reset value undefined.</p>
       <table>
         <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
         <tr><td>6:0</td><td><code>HSY</code></td><td>Horizontal-sync width</td></tr>
@@ -485,6 +492,9 @@ byte offset :  +0  +1  +2  +3</code></pre>
       </table>
 
       <h3>6.19 <code>VI_HBS656</code> (0x74, 16-bit)</h3>
+      <p>Border/CCIR-656 horizontal-blank-start — the pair to <code>VI_HBE656</code>.
+        Together they draw the black border used in debug mode around the active picture
+        for encoders that only accept 720 active pixels.</p>
       <table>
         <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
         <tr><td>9:0</td><td><code>HBS656</code></td><td>Border horizontal-blank-start</td></tr>
