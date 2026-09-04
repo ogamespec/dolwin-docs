@@ -13,6 +13,7 @@ user-friendly `docs/` folder served on GitHub Pages.
 |---|---|
 | Architecture overview index | [architecture/README.md](architecture/README.md) |
 | Motherboard, connectors & components | [architecture/motherboard.md](architecture/motherboard.md) |
+| Clock generator | [architecture/clock-generator.md](architecture/clock-generator.md) |
 | IBM Gekko processor | [architecture/gekko.md](architecture/gekko.md) |
 | Flipper chipset | [architecture/flipper.md](architecture/flipper.md) |
 | Disk Drive | [architecture/disk-drive.md](architecture/disk-drive.md) |

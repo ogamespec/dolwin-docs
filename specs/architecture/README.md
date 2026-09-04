@@ -19,15 +19,17 @@ Flipper.
 | # | Topic | Document | Highlights |
 |---|---|---|---|
 | 1 | Motherboard, connectors & components | [motherboard.md](motherboard.md) | board layout, system buses (162 MHz / 64-bit), Flipper pin groups, connector pinouts, power |
-| 2 | IBM Gekko processor | [gekko.md](gekko.md) | 486 MHz PowerPC 750, caches, locked cache, write-gather buffer, Paired-Single SIMD, MMU, PLL |
-| 3 | Flipper chipset | [flipper.md](flipper.md) | northbridge + GPU + audio DSP + I/O; memory arbitration & protection; graphics pipeline; DSP/AI; VI; boot/reset |
-| 4 | Disk Drive | [disk-drive.md](disk-drive.md) | 3" mini-DVD, CAV, copy protection, intelligent MN-10200 drive, DI interface & signals, streaming audio |
-| 5 | Peripheral devices (EXI, SI) | [peripherals.md](peripherals.md) | EXI channels/devices/transfer modes, SI channels/polling, controller protocol & hardware |
+| 2 | Clock generator | [clock-generator.md](clock-generator.md) | 27 MHz reference oscillator, clock-generator chip & pinout, system clock tree, PLL straps, emulator timing |
+| 3 | IBM Gekko processor | [gekko.md](gekko.md) | 486 MHz PowerPC 750, caches, locked cache, write-gather buffer, Paired-Single SIMD, MMU, PLL |
+| 4 | Flipper chipset | [flipper.md](flipper.md) | northbridge + GPU + audio DSP + I/O; memory arbitration & protection; graphics pipeline; DSP/AI; VI; boot/reset |
+| 5 | Disk Drive | [disk-drive.md](disk-drive.md) | 3" mini-DVD, CAV, copy protection, intelligent MN-10200 drive, DI interface & signals, streaming audio |
+| 6 | Peripheral devices (EXI, SI) | [peripherals.md](peripherals.md) | EXI channels/devices/transfer modes, SI channels/polling, controller protocol & hardware |
 
 ## Key system parameters (quick reference)
 
 | Parameter | Value |
 |---|---|
+| Clock reference | 27 MHz crystal → 162 MHz bus, 486 MHz CPU, 81 MHz DSP/ARAM, 27/54 MHz video |
 | CPU | IBM Gekko, 486 MHz, PowerPC 750-derivative, Paired-Single |
 | System ASIC | Flipper (ArtX/ATI), 162 MHz |
 | Main bus | 32-bit address / 64-bit data, 162 MHz, ~1.3 GB/s |

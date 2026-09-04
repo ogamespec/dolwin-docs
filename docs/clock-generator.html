@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Clock Generator</title>
+  <meta name="description" content="GameCube board clocking: the 27 MHz reference oscillator, the clock generator chip, the system clock tree and how the timing domains are handled by an emulator." />
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Clock Generator</p>
+      <h1>Clock Generator</h1>
+      <blockquote>The board's clocking: a single 27 MHz reference oscillator feeding a
+        clock generator that produces the system, CPU, memory, audio and video clock
+        domains — and how this is handled by an emulator.</blockquote>
+
+      <h2>1. Role</h2>
+      <p>Everything on the board is synchronised to a single low-frequency reference.
+        From it the clock generator derives the domains used by the major subsystems:</p>
+      <table>
+        <tr><th>Domain</th><th>Frequency</th><th>Driven by</th><th>Used by</th></tr>
+        <tr><td>Reference</td><td><strong>27 MHz</strong></td><td>27 MHz crystal oscillator</td><td>Master timebase for the whole board</td></tr>
+        <tr><td>System / memory bus</td><td><strong>162 MHz</strong></td><td>Clock generator (PLL)</td><td>Gekko interface and Flipper</td></tr>
+        <tr><td>CPU core</td><td><strong>486 MHz</strong></td><td>Gekko on-die PLL (3 × bus)</td><td>Gekko core</td></tr>
+        <tr><td>Audio DSP / ARAM</td><td><strong>81 MHz</strong></td><td>½ of the bus clock</td><td>Audio DSP, ARAM SDRAM</td></tr>
+        <tr><td>Video</td><td><strong>27 / 54 MHz</strong></td><td>Clock generator + TV encoder</td><td>Video Interface (VI)</td></tr>
+      </table>
+      <p>Getting these ratios right keeps the CPU speed, the memory bus, the video
+        beam and the audio sample rate mutually consistent. All subsystems are derived
+        from the one 27 MHz reference, so there is a single source of timing truth.</p>
+
+      <h2>2. Reference oscillator (27 MHz)</h2>
+      <p>The master reference is a 27 MHz crystal oscillator on the main board:</p>
+      <table>
+        <tr><th>Pin</th><th>Dir.</th><th>Function</th></tr>
+        <tr><td><code>CLKO_p</code></td><td>Out</td><td>Buffered 27 MHz output to the clock generator</td></tr>
+        <tr><td><code>XIN_p</code></td><td>In</td><td>Crystal terminal; external clock input in bypass</td></tr>
+        <tr><td><code>XOUT_p</code></td><td>Out</td><td>Crystal drive terminal (inverted)</td></tr>
+        <tr><td><code>STOP_n</code></td><td>In</td><td>Active-low — stop the oscillator (output held low)</td></tr>
+        <tr><td><code>BYPASS_n</code></td><td>In</td><td>Active-low — bypass; an external clock is injected on <code>XIN_p</code></td></tr>
+        <tr><td><code>AVDD</code>/<code>AGND</code></td><td>Pwr</td><td>Analog supply / ground (model-only, unconnected net)</td></tr>
+      </table>
+      <ul>
+        <li><strong>Normal:</strong> the crystal oscillates; <code>CLKO_p</code> carries 27 MHz and <code>XOUT_p</code> is the inverted drive back to the crystal.</li>
+        <li><strong>Stop:</strong> <code>STOP_n</code> low freezes the oscillator and drives the output low (gates the clock while idle or held in reset).</li>
+        <li><strong>Bypass:</strong> <code>BYPASS_n</code> low disables the internal crystal and passes an external clock on <code>XIN_p</code> through to <code>CLKO_p</code> — a test notch.</li>
+      </ul>
+
+      <h2>3. Clock generator chip</h2>
+      <p>The clock generator takes the 27 MHz reference and the reset state and produces
+        the system clocks. It is a <strong>frequency-synthesis</strong> block that
+        multiplies the reference up to the system clock used by the CPU and Flipper:</p>
+      <table>
+        <tr><th>Pin</th><th>Dir.</th><th>Function</th></tr>
+        <tr><td><code>osc_in</code></td><td>In</td><td>Reference input from the oscillator</td></tr>
+        <tr><td><code>osc_out</code></td><td>Out</td><td>Feedback to the crystal / oscillator</td></tr>
+        <tr><td><code>cpuclk</code></td><td>Out</td><td>Gekko system clock</td></tr>
+        <tr><td><code>flipclk</code></td><td>Out</td><td>Flipper system clock</td></tr>
+        <tr><td><code>x54mhz</code></td><td>Out</td><td>54 MHz clock</td></tr>
+        <tr><td><code>resetb</code></td><td>In</td><td>Active-low reset</td></tr>
+      </table>
+      <ul>
+        <li>The CPU and Flipper are clocked by the <strong>same system clock domain</strong> — one source drives both. Flipper uses it directly; Gekko multiplies it on die with its own PLL for the core.</li>
+        <li>The <strong>54 MHz</strong> output is a separate domain, buffered to the board and fed to the Video Interface (<code>viclkin</code>); the TV encoder independently derives its own 27/54 MHz video clocks and returns them to Flipper's <code>viclk27</code>/<code>viclk54</code>.</li>
+        <li>The chip is reset by <code>resetb</code> (active-low); the oscillator's <code>STOP_n</code> can also hold the clock off.</li>
+        <li>In the chip's RTL model the system-clock period is a <strong>parameter</strong>, so a tester can override it; the retail design runs the bus at 162 MHz and divides/multiplies to the subsystems (DSP at half the bus clock, video at the 27/54 MHz base).</li>
+      </ul>
+
+      <h2>4. Clock tree and distribution</h2>
+      <pre><code>                 +--------------------+
+  27 MHz crystal |  Clock generator   |-- CPU system clock ---> Gekko
+   (osc_in/osc_out)|  (PLL, resetb)    |-- Flipper clock   ---> Flipper
+                 +--------------------|-- 54 MHz          ---> VI (viclkin)
+                          |
+                          +-- 27/54 MHz (TV encoder) ---> VI (viclk27/viclk54)</code></pre>
+      <p>On the CPU PLL path the board also carries a small <strong>programmable PLL</strong>
+        and a clock buffer/fan-out:</p>
+      <ul>
+        <li>The PLL is a general-purpose clock synthesizer with divider straps for the reference (<code>R</code>), output (<code>S</code>) and VCO (<code>V</code>) dividers, plus a power-down/tri-state control.</li>
+        <li>Its output is fanned out (optionally zeroed) by a clock buffer that produces a set of output clocks, gated by a two-bit select.</li>
+        <li>The selected clock reaches the Gekko PLL, whose on-die divider/multiplier (<code>PLL_EXT</code>/<code>PLL_CFG[0:3]</code> straps, plus the CPU <strong>PLL connection</strong> pins) sets the core-to-bus ratio. See <code>HW/Gekko/PLL_CFG.txt</code>.</li>
+      </ul>
+      <p>Other clock-area nets on the board:</p>
+      <ul>
+        <li>Flipper's PLL/reset pins: <code>rstinb</code>, <code>rstswb</code>, <code>lock</code>, <code>byppll</code>, <code>clk</code>, <code>clko</code> — <code>lock</code> reports PLL lock, <code>byppll</code> selects bypass.</li>
+        <li>The memory clocks (<code>memclk</code>/<code>memclkb</code>/<code>memckq</code>) and the ARAM clock (<code>sdclk</code>) are generated by Flipper from its own clock and returned to the memories; the ARAM clock is half the system bus.</li>
+      </ul>
+
+      <h2>5. Reset and PLL behaviour</h2>
+      <p>The clock generator and the rest of the board are held in reset during power-up.
+        A board power-on/watchdog asserts the reset line and releases it after a number of
+        system-clock cycles, so the reference, PLL and memories are stable before the Gekko
+        starts fetching. Asserting reset again re-runs the sequence. PLL <strong>lock</strong>
+        (reported on Flipper's <code>lock</code> pin) and <strong>bypass</strong> mode are
+        scan/debug features rather than normal operating states.</p>
+
+      <h2>6. Emulator application notes</h2>
+      <p>An emulator does not need to model the clock generator silicon; it needs to
+        reproduce the <strong>clock domains</strong> it produces and the timing ratios
+        between them.</p>
+      <ul>
+        <li><strong>Single timebase.</strong> Derive every subsystem from one 27 MHz reference. The bus/CPU/DSP/video clocks are integer ratios of it, so one master tick multiplied into each domain keeps them consistent. Avoid independent free-running clocks per subsystem.</li>
+        <li><strong>Video timing.</strong> The VI counts horizontal/vertical positions in the 27/54 MHz domain. An accurate beam position (for VBlank interrupts, light-gun latching and the display mode) comes from counting against the video clock relative to the real output resolution and refresh — not a fixed "one line = N ticks" assumption, since the ratio depends on the mode (interlaced, double-strike, progressive).</li>
+        <li><strong>Audio.</strong> The AI/DSP sample rate and ARAM DMA are tied to the audio clock tree. For a 32/48 kHz mix, derive the timestamps from the clock ratio rather than a host-time timer, so the streams stay in sync with the video.</li>
+        <li><strong>CPU / bus.</strong> Model the 162 MHz bus clock and 486 MHz core (3 × bus). Instruction/memory-access timing and the FIFO/burst behaviour the CPU drives into Flipper depend on the bus clock. Keep the core multiplier (from the <code>PLL_EXT</code>/<code>PLL_CFG</code> and PLL-connection straps) as configuration, not a constant.</li>
+        <li><strong>Determinism and reset.</strong> The board re-arms after a fixed number of system-clock cycles in reset. Reprocessing that count (rather than a wall-clock delay) keeps boot and reset reproducible. A cycle-accurate model can reproduce the PLL lock period and clock-stop/bypass test states; a high-level emulator can usually ignore them.</li>
+        <li><strong>Where the models are used directly.</strong> The oscillator, clock-generator, PLL and buffer RTL models are what a board-level testbench/FPGA design instantiates for its clocks. A software emulator replicates their <em>output</em> (the domains and ratios) instead of the modules.</li>
+      </ul>
+
+      <h2>7. Related specifications</h2>
+      <ul>
+        <li><a href="motherboard.html">Motherboard &amp; connectors</a></li>
+        <li><a href="gekko.html">IBM Gekko CPU</a></li>
+        <li><a href="flipper.html">Flipper chipset</a></li>
+        <li><a href="peripherals.html">Peripherals (EXI &amp; SI)</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
