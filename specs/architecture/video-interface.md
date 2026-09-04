@@ -349,7 +349,9 @@ request logic start from a known state. Reset value `0x0000`.
 
 ### 6.3 `VI_HORIZ_TIMER0` (0x04, 32-bit)
 
-Horizontal timing. Reset value undefined.
+Horizontal timing, part 1. `HLW` is the width of a half line; `HCE`/`HCS` mark
+where the colour burst ends and begins relative to the horizontal sync
+reference. Reset value undefined.
 
 | Bits | Field | Description |
 |---|---|---|
@@ -359,7 +361,9 @@ Horizontal timing. Reset value undefined.
 
 ### 6.4 `VI_HORIZ_TIMER1` (0x08, 32-bit)
 
-Horizontal timing. Reset value undefined.
+Horizontal timing, part 2. `HSY` is the sync-pulse width, while `HBE` and `HBS`
+define the blanking interval (where pixels are suppressed) relative to the sync
+and half-line references. Reset value undefined.
 
 | Bits | Field | Description |
 |---|---|---|
@@ -538,6 +542,10 @@ be any width without adding a border in memory.
 | 15 | `BRDR_EN` | Border enable | 0 |
 
 ### 6.19 `VI_HBS656` (0x74, 16-bit)
+
+Border/CCIR-656 horizontal-blank-start — the pair to `VI_HBE656`. Together they
+draw the black border used in debug mode around the active picture for encoders
+that only accept 720 active pixels.
 
 | Bits | Field | Description |
 |---|---|---|
