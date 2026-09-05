@@ -659,9 +659,11 @@ and one that behaves with the right timing and protection semantics.
 
 ## 11. References
 
-- `priv/chip_legacy/mem/*.v` — memory-controller RTL (arbiter, write buffer,
-  external controller, per-master interfaces, MAC).
-- `priv/fdl_legacy/mem_reg.fdl` — register definitions used here.
+- Internal memory-controller RTL (arbiter, write buffer, external controller,
+  per-master interfaces, MAC) — source of the block and datapath structure,
+  summarised here.
+- Internal register-definition (FDL) files — the register map and field
+  semantics used here.
 - `HW/IO/Memory.txt`, `HW/IO/mi.txt` — memory map and MI protection notes.
 - `RE/OS/osmemory.txt` — the OS memory-protection library (`OSProtectRange`,
   `__OSInitMemoryProtection`, the reset handler).
