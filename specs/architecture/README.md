@@ -26,6 +26,7 @@ Flipper.
 | 6 | Peripheral devices (EXI, SI) | [peripherals.md](peripherals.md) | EXI channels/devices/transfer modes, SI channels/polling, controller protocol & hardware |
 | 7 | Video Interface (VI) | [video-interface.md](video-interface.md) | scan-out engine; full register map; H/V timing tables; horizontal scaler/filter; light-gun & 3D; emulator model |
 | 8 | Memory Interface (MEM) | [memory-interface.md](memory-interface.md) | arbitration hub & arbiter; all memory masters; queues & write buffering; coherency; MARR protection; the 1T-SRAM "Splash" interface; emulator model |
+| 9 | Processor Interface (PI) | [processor-interface.md](processor-interface.md) | the Gekko 60x bus; 16-bit register access; transfer types/sizes & prefetch; interrupt controller; PI errors; the physical memory map (RAM, EFB, GFX FIFO, boot ROM); Gekko reset; emulator model |
 
 ## Key system parameters (quick reference)
 
