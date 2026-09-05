@@ -32,6 +32,11 @@ Flipper internal blocks (see `HW/Flipper_ASIC_Block_Diagram.png`):
 | **VI** (Video Interface) | Framebuffer readout, H/V scaler, TV encoding |
 | **DSP** (audio DSP) | 16-bit signal processor for audio |
 
+The complete register-level, emulator-focused description of the Processor
+Interface — the Gekko 60x bus, the 16-bit register access, the interrupt
+controller, PI errors, the physical memory map and the Gekko reset — is in
+[processor-interface.md](processor-interface.md).
+
 ## 2. Memory interface (MI) and memory protection
 
 The memory interface is the arbitration hub. Its bus users (masters) are:
