@@ -137,7 +137,18 @@
         }
       });
 
-      firstH2.parentNode.insertBefore(nav, firstH2);
+      // Build the sticky left sidebar next to the scrolling content.
+      var wrap = article.parentNode;
+      var layout = document.createElement("div");
+      layout.className = "doc-layout";
+
+      var aside = document.createElement("aside");
+      aside.className = "toc-sidebar";
+      aside.appendChild(nav);
+
+      wrap.insertBefore(layout, article);
+      layout.appendChild(aside);
+      layout.appendChild(article);
     });
   }
 
