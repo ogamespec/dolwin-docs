@@ -302,6 +302,55 @@ article ul, article ol { padding-left: 1.4rem; }
 .pill { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px;
   background: var(--surface-2); border: 1px solid var(--border); font-size: 0.8rem; }
 
+/* ---------- Document layout: sticky sidebar + content ---------- */
+.doc-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+.toc-sidebar {
+  position: sticky;
+  top: 5.5rem;
+  max-height: calc(100vh - 6.5rem);
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+/* ---------- Table of contents ---------- */
+.toc {
+  margin: 0;
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 2px 8px var(--shadow);
+  font-size: 0.9rem;
+}
+.toc-title {
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  margin-bottom: 0.6rem;
+  font-weight: 600;
+}
+.toc ul { list-style: none; margin: 0; padding-left: 0; }
+.toc ul ul { padding-left: 1.05rem; }
+.toc li { margin: 0.22rem 0; }
+.toc a { color: var(--accent); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+.toc .toc-num { color: var(--text-soft); font-weight: 600; margin-right: 0.35rem; }
+
+@media (max-width: 900px) {
+  .doc-layout { display: block; }
+  .toc-sidebar {
+    position: static;
+    max-height: none;
+    margin-bottom: 1.6rem;
+  }
+}
+
 @media (max-width: 720px) {
   .app-nav { display: none; }
   .hero h1 { font-size: 1.7rem; }

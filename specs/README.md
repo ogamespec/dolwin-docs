@@ -17,6 +17,7 @@ user-friendly `docs/` folder served on GitHub Pages.
 | IBM Gekko processor | [architecture/gekko.md](architecture/gekko.md) |
 | Flipper chipset | [architecture/flipper.md](architecture/flipper.md) |
 | Video Interface (VI) | [architecture/video-interface.md](architecture/video-interface.md) |
+| Memory Interface (MEM) | [architecture/memory-interface.md](architecture/memory-interface.md) |
 | Disk Drive | [architecture/disk-drive.md](architecture/disk-drive.md) |
 | Peripheral devices (EXI, SI) | [architecture/peripherals.md](architecture/peripherals.md) |
 

@@ -47,6 +47,11 @@ The memory interface is the arbitration hub. Its bus users (masters) are:
 plus a write-buffer path and an external controller (`mem_extctl`) that owns the
 ARAM SDRAM.
 
+The complete register-level, emulator-focused description of the memory interface —
+the arbiter, the per-master queues and data paths, write buffering and coherency,
+memory protection, and the external 1T-SRAM ("Splash") interface — is in
+[memory-interface.md](memory-interface.md).
+
 ### 2.1 Memory map (physical, Flipper)
 
 | Address | Size | Resource |

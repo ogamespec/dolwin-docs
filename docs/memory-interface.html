@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Memory Interface (MI / MEM)</title>
+  <meta name="description" content="GameCube Memory Interface (MEM): the Flipper arbitration hub for main memory. Masters, queues, arbiter priority, bandwidth dials, write buffering and coherency, memory protection, and the 1T-SRAM 'Splash' interface. Emulator model." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html">
+      <span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="video-interface.html">Video Interface</a>
+      <a href="memory-interface.html" class="active">Memory Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="peripherals.html">Peripherals</a>
+    </nav>
+    <div class="theme-toggle">
+      <span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Memory Interface</p>
+      <h1>Memory Interface (MI / MEM)</h1>
+      <blockquote><strong>MEM</strong> (the Memory Interface, also <strong>MI</strong>) is the
+        block inside the <strong>Flipper</strong> ASIC that is the single hub through which every
+        other block reaches main memory. It arbitrates the competing memory masters, buffers writes
+        so the bus does not have to keep switching between read and write, refreshes the external
+        memory, protects main memory with programmable region registers, and drives the high-speed
+        interface to the two external <strong>1T-SRAM</strong> dies (the "Splash" memory).</blockquote>
+
+      <p>This is the register-level, emulator-focused specification. The facts are drawn from the
+        repository's hardware documentation, the memory-controller RTL, the system-library
+        reverse-engineering notes and the memory-controller patent, and are summarised rather than
+        reproduced verbatim. It describes the <strong>legacy</strong> (GameCube, HW2) memory
+        interface as sold.</p>
+
+      <h2>1. Overview</h2>
+      <p>Flipper is the hub of the console, and MEM is the hub of Flipper. It sits between the Gekko
+        bus, the graphics pipeline, the audio DSP, the I/O DMA controllers, the video interface and
+        the external 1T-SRAM. Every byte that moves to or from main memory is arbitrated by MEM.</p>
+      <p>MEM is a <strong>request/acknowledge crossbar</strong> rather than a shared synchronous bus.
+        Each master has its own point-to-point interface into MEM with an independent data width and
+        queue, and MEM grants one master at a time. This lets the design tune each master's bandwidth
+        (the "bandwidth dials") and lets the graphics masters run at full memory bandwidth while the
+        latency-sensitive CPU stays responsive.</p>
+      <p>The external memory is <strong>MoSys 1T-SRAM</strong> ("Splash"): <strong>24 MB</strong>
+        organised as <strong>two 12 MB dies</strong>, each with a 32-bit data path, forming a
+        <strong>64-bit</strong> bus. The external bus runs at about <strong>twice</strong> the Flipper
+        core clock (~324 MHz), giving roughly <strong>2.6 GB/s</strong> — noticeably more than the
+        162 MHz Gekko↔Flipper bus, which is what lets the graphics pipeline read textures and vertex
+        data at full speed without starving the CPU.</p>
+
+      <h3>1.1 Sub-blocks</h3>
+      <table>
+        <tr><th>Block</th><th>Role</th></tr>
+        <tr><td><code>mem_pi</code></td><td>Interface to the Processor Interface (PI) — the CPU master; also the register port for all MEM registers</td></tr>
+        <tr><td><code>mem_cp</code></td><td>Interface to the Command Processor (CP) — 128-bit streaming read master</td></tr>
+        <tr><td><code>mem_tc</code></td><td>Interface to the texture cache (TC) — 128-bit streaming read master</td></tr>
+        <tr><td><code>mem_pe</code></td><td>Interface to the Pixel Engine (PE) — 128-bit write master (EFB→XFB copies)</td></tr>
+        <tr><td><code>mem_io</code></td><td>Interface to the I/O interface (IO) — 64-bit read/write DMA master</td></tr>
+        <tr><td><code>mem_dsp</code></td><td>Interface to the audio DSP — 64-bit read/write DMA master</td></tr>
+        <tr><td><code>mem_vi</code></td><td>Interface to the Video Interface (VI) — 64-bit read master (scan-out)</td></tr>
+        <tr><td><code>mem_memreg</code></td><td>Register file — protection, configuration, bandwidth dials, counters, interrupts</td></tr>
+        <tr><td><code>mem_wrbuf</code></td><td>Write-buffer / global-write-queue; asserts flow control and emits flush/ack</td></tr>
+        <tr><td><code>mem_arb</code></td><td>The arbiter — priority + round-robin state machine over all pending requests</td></tr>
+        <tr><td><code>mem_extctl</code></td><td>External-memory controller — generates the 1T-SRAM address/control and routes data to/from the MAC</td></tr>
+      </table>
+      <p>The read path is a 3-way fan-out of data widths; the write path is funnelled into a single
+        global write buffer that drains to memory in bursts:</p>
+      <pre><code>                    ┌───────────────── MEM (arbiter) ─────────────────┐
+  CPU (PI) ──64b──▶ │  mem_pi      ─┐                                  │
+  CP ──128b───────▶ │  mem_cp      ─┤                                  │
+  TC ──128b───────▶ │  mem_tc      ─┤        ┌── mem_arb (priority/RR) ─┐
+  VI ──64b────────▶ │  mem_vi      ─┼──────▶ │  arbitrates pending reqs │──▶ mem_extctl ──▶ 1T-SRAM
+  IO ──64b──rw───▶ │  mem_io      ─┤        └──────────────┬───────────┘        (via MAC)
+  DSP ──64b──rw──▶ │  mem_dsp     ─┘                       │
+  PE ──128b──wr─▶  │  mem_pe ───▶ mem_wrbuf (WQ0) ──────────┘
+                    └───────────────────────────────────────────┘</code></pre>
+
+      <h3>1.2 Transaction model</h3>
+      <p>Every access to main memory is a <strong>cache-line (32-byte) burst</strong>. A 64-bit master
+        (CPU/IO/DSP/VI) moves one line in <strong>4</strong> back-to-back 8-byte beats; a 128-bit master
+        (CP/TC/PE) moves it in <strong>2</strong> back-to-back 16-byte beats. Addresses are 32-byte aligned
+        (the low 5 bits are implied), and for a non-aligned CPU read the
+        <strong>critical double-word</strong> is returned first and the rest wrap. Reads are always
+        delivered <strong>in-order</strong> — MEM does not reorder on its own, so no software reordering
+        work is needed.</p>
+
+      <h2>2. External interfaces (per master)</h2>
+      <h3>2.1 PI / MEM register interface</h3>
+      <p>The MEM registers are reached through the PI at <code>0xCC004000</code> (also mapped read-write
+        at <code>0x0C004000</code>). All register data is <strong>16-bit</strong>, and a 32-bit CPU access
+        is split by the PI into two 16-bit transfers (high word at the base, low word at base+1); Flipper
+        is big-endian. <code>pi_mem_reg</code> selects a register access; during a register write the low
+        8 bits of the address hold the register address and <code>pi_mem_data[63:48]</code> carries the
+        16-bit value.</p>
+
+      <h3>2.2 CPU (PI) memory interface</h3>
+      <p>The CPU is the only master with a <strong>dedicated 64-bit</strong> data path (the "system"
+        path is shared by IO/DSP/VI and the 128-bit "GFX" path by CP/TC).</p>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Description</th></tr>
+        <tr><td><code>pi_mem_addr[25:1]</code></td><td>25</td><td>Cache-line address; double-word aligned for reads, 32-byte aligned for writes</td></tr>
+        <tr><td><code>pi_mem_data[63:0]</code></td><td>64</td><td>CPU write data (in) / read data (out on <code>mem_pi_data</code>)</td></tr>
+        <tr><td><code>pi_mem_rd</code></td><td>1</td><td>1 = read, 0 = write</td></tr>
+        <tr><td><code>pi_mem_req</code></td><td>1</td><td>One-cycle request start</td></tr>
+        <tr><td><code>pi_mem_msk[1:0]</code></td><td>2</td><td>Per-32-bit-word write mask (0 = write enabled)</td></tr>
+        <tr><td><code>pi_mem_flush</code></td><td>1</td><td>Flush the write buffer before continuing</td></tr>
+        <tr><td><code>pi_mem_fifoWr</code></td><td>1</td><td>This write is for the CP-FIFO region; MEM must tell CP when it is committed</td></tr>
+        <tr><td><code>mem_pi_ack</code></td><td>1</td><td>One-cycle acknowledge; first 8 bytes return on this cycle</td></tr>
+        <tr><td><code>mem_pi_data[63:0]</code></td><td>64</td><td>Read data; a line arrives across 4 back-to-back clocks</td></tr>
+        <tr><td><code>mem_pi_reqfull</code></td><td>1</td><td>Flow-control: stop issuing requests while asserted</td></tr>
+      </table>
+      <p>The CPU interface supports multiple outstanding reads (a new read every cycle); writes are
+        issued every 4 clocks. Uncached byte/halfword stores are written as the full aligned 8-byte
+        block (see §9, the store-width quirk).</p>
+
+      <h3>2.3 GFX read masters (CP, TC)</h3>
+      <p>CP and TC are <strong>read-only</strong>, <strong>128-bit</strong> masters. Each has a queued
+        request path (depth 16) and a <code>reqFull</code> signal that asserts when the queue is almost
+        full (allowing 2 more entries).</p>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Description</th></tr>
+        <tr><td><code>&lt;cp|tc&gt;_mem_req</code></td><td>1</td><td>One-cycle read request</td></tr>
+        <tr><td><code>&lt;cp|tc&gt;_mem_addr[25:5]</code></td><td>21</td><td>Cache-line read address</td></tr>
+        <tr><td><code>mem_&lt;cp|tc&gt;_ack</code></td><td>1</td><td>One-cycle ack; first 16 bytes in the next cycle</td></tr>
+        <tr><td><code>mem_&lt;cp|tc&gt;_data[127:0]</code></td><td>128</td><td>128-bit data; a line in 2 back-to-back clocks</td></tr>
+        <tr><td><code>mem_&lt;cp|tc&gt;_reqFull</code></td><td>1</td><td>Queue almost full — 2 more requests may still be accepted</td></tr>
+      </table>
+      <p><code>mem_cp_fifoWr</code> informs CP that a CPU write to the command FIFO has been committed to
+        memory, so the graphics front-end can advance its write pointer.</p>
+
+      <h3>2.4 Pixel Engine (PE) write master</h3>
+      <p>PE is <strong>write-only</strong> and <strong>128-bit</strong>. It writes the copy/scaled EFB
+        image to main memory (optionally in texture format).</p>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Description</th></tr>
+        <tr><td><code>pe_mem_addr[25:5]</code></td><td>21</td><td>Cache-line write address</td></tr>
+        <tr><td><code>pe_mem_data[127:0]</code></td><td>128</td><td>128-bit write data; 2 back-to-back beats</td></tr>
+        <tr><td><code>pe_mem_req</code></td><td>1</td><td>One-cycle write request</td></tr>
+        <tr><td><code>pe_mem_flushwrbuf</code></td><td>1</td><td>Flush the write buffer at the end of a write burst</td></tr>
+        <tr><td><code>mem_pe_reqfull</code></td><td>1</td><td>Write queue almost full — no more requests</td></tr>
+        <tr><td><code>mem_pe_wrbufempty</code></td><td>1</td><td>Write buffer empty — safe to start a read</td></tr>
+      </table>
+
+      <h3>2.5 System masters (IO, DSP, VI)</h3>
+      <p>These three are <strong>64-bit</strong> masters on the shared "system" data path. They are
+        low-bandwidth, single-outstanding masters.</p>
+      <ul>
+        <li><strong>IO</strong> (<code>mem_io</code>) — reads and writes (peripheral DMA: disc, EXI,
+          memory cards, network). Single outstanding transfer.</li>
+        <li><strong>DSP</strong> (<code>mem_dsp</code>) — reads and writes (audio, ARAM DMA, code
+          loading). Single outstanding transfer; carries a 2-bit write mask.</li>
+        <li><strong>VI</strong> (<code>mem_vi</code>) — read-only (framebuffer scan-out). Single
+          outstanding read; a new request is issued only after the previous ack, and the picture is
+          always fetched in-order.</li>
+      </ul>
+      <p>Each carries an address <code>[25:5]</code>, a <code>req</code>, an <code>rd</code> /
+        read-only indication, a <code>mem_&lt;x&gt;Ack</code>, a <code>mem_&lt;x&gt;Data[63:0]</code> read
+        bus and a <code>mem_&lt;x&gt;FlushWrAck</code>, plus the per-master <code>FlushWrBuf</code> input
+        at the end of a write burst.</p>
+
+      <h3>2.6 External memory — the "Splash" 1T-SRAM interface</h3>
+      <p>This is the memory-side interface that the reference patent figure omits. MEM drives the two
+        external <strong>1T-SRAM</strong> dies through the <strong>Memory Access Controller (MAC)</strong>
+        , which converts the internal wide, moderate-rate datapath to the narrow, double-data-rate
+        external interface.</p>
+      <table>
+        <tr><th>Group</th><th>Bits</th><th>Description</th></tr>
+        <tr><td><code>MEMD0–31</code>, <code>MEMD32–63</code></td><td>64</td><td>Data bus — 32 bits per die, forming the 64-bit main-memory bus</td></tr>
+        <tr><td><code>MEMA1–21</code></td><td>21</td><td>Address bus (burst-word addressing); <code>MEMA0</code> is implied</td></tr>
+        <tr><td><code>MEMRW</code></td><td>1</td><td>Direction — 1 = read, 0 = write</td></tr>
+        <tr><td><code>MEMADSxB</code></td><td>2</td><td>Address strobe / chip select, active low (one per die)</td></tr>
+        <tr><td><code>MEMREFxSH</code></td><td>1</td><td>Refresh request</td></tr>
+        <tr><td><code>MEMCK0–3</code>, <code>MEMCLK0/1</code>, <code>MEMCLKB0/1</code></td><td>—</td><td>Quad (DDR) clock and inverted-clock outputs for the 1T-SRAM</td></tr>
+        <tr><td><code>MEMCKQ0–3</code></td><td>4</td><td>Read data strobes returned by the 1T-SRAM</td></tr>
+        <tr><td><code>MEMMSK0/1</code></td><td>2</td><td>Write data masks</td></tr>
+        <tr><td><code>MEMRSTB0/1</code></td><td>2</td><td>Reset to each die</td></tr>
+        <tr><td>drive-strength / terminator</td><td>—</td><td>Programmable pad drive strength and active-terminator enable</td></tr>
+      </table>
+      <p>The <strong>MAC</strong> is the physical interface: each MAC block converts a 32-bit, 200 MHz
+        core-side port into a 16-bit, 400 MHz <strong>DDR</strong> lane to the die. Four MAC blocks (one
+        per 16-bit lane) make up the 64-bit memory datapath; the 1T-SRAM's quad-clock scheme provides
+        the double-data-rate timing. The result is a 64-bit bus at roughly twice the Flipper core clock.</p>
+      <p>In a software/emulator model the MAC and the pad timing collapse to a single question: how many
+        bytes can MEM push through the external bus per core cycle. Because the bus is faster than the
+        core, the arbiter can keep the memory busy almost every cycle even when a 128-bit master is being
+        served.</p>
+
+      <h2>3. Arbitration</h2>
+      <p>MEM serves <strong>7 masters</strong> plus its own refresh logic. Four can write (CPU, PE, DSP,
+        IO), three are read-only (CP, TC, VI), and DSP/IO/CPU can both read and write. There is also a
+        write-buffer flush agent.</p>
+
+      <h3>3.1 Masters and capability</h3>
+      <table>
+        <tr><th>Master</th><th>Read</th><th>Write</th><th>Data path</th></tr>
+        <tr><td>PI (CPU)</td><td>yes</td><td>yes</td><td>64-bit (own)</td></tr>
+        <tr><td>CP</td><td>yes</td><td>no</td><td>128-bit (GFX shared)</td></tr>
+        <tr><td>TC</td><td>yes</td><td>no</td><td>128-bit (GFX shared)</td></tr>
+        <tr><td>PE</td><td>no</td><td>yes</td><td>128-bit</td></tr>
+        <tr><td>VI</td><td>yes</td><td>no</td><td>64-bit (system shared)</td></tr>
+        <tr><td>IO</td><td>yes</td><td>yes</td><td>64-bit (system shared)</td></tr>
+        <tr><td>DSP</td><td>yes</td><td>yes</td><td>64-bit (system shared)</td></tr>
+      </table>
+
+      <h3>3.2 Priority order</h3>
+      <p>The overall service order is (highest → lowest):</p>
+      <ol>
+        <li><strong>CPU (PI) read</strong> — must be serviced with low, predictable latency. Highest
+          read priority, subject only to the read-width restriction below.</li>
+        <li><strong>Write-buffer flush</strong> — when the global write queue fills to ~75–80% or a CPU
+          read address hits a buffered write, the write buffer is drained in one go, amortising the
+          read↔write turnaround.</li>
+        <li><strong>Refresh</strong> — normally low priority, but <em>bumped to just below CPU read</em>
+          when the pending-refresh count reaches the threshold.</li>
+        <li><strong>GFX and system masters</strong> — CP/TC ("GFX") and DSP/IO/VI ("system") arbitrate
+          against each other in round-robin, driven by a programmable priority register that rotates
+          after every grant.</li>
+      </ol>
+      <p>The write buffer (the union of the local write queues and the global write queue) is always
+        drained <strong>in its entirety</strong> once a flush begins — never interleaved read/write at
+        the sub-line level.</p>
+
+      <h3>3.3 Bandwidth dials</h3>
+      <p>Five masters have a per-master <strong>bandwidth dial</strong> register (CPU read, CPU write,
+        CP read, TC read, PE write). Each is an <strong>8-bit fraction</strong> (format 1.8) of a memory
+        cycle. Every core cycle the dial value is added to an accumulator that starts at 0; the master
+        is admitted to arbitration only when the accumulator's bit 8 (fraction ≥ 1.00) is set.</p>
+      <ul>
+        <li>A dial of <strong>1.00</strong> (<code>0x100</code>) means the master is always admitted — the
+          default.</li>
+        <li>A dial of <strong>0.50</strong> admits roughly every second cycle, throttling it under
+          contention.</li>
+        <li>The arbiter <strong>never lets memory go idle</strong> because of a dial: a dialed-down master
+          is still served if the bus has nothing else to do.</li>
+      </ul>
+      <p>The write dials (CPU write, PE write) throttle how quickly writes enter the global write queue,
+        spreading the read↔write turnaround over more time.</p>
+
+      <h3>3.4 Structural restrictions</h3>
+      <ul>
+        <li>Two CPU reads cannot occur back to back (the CPU path is half memory bandwidth).</li>
+        <li>Two system (DSP/IO/VI) reads cannot occur back to back.</li>
+        <li>Only one master is serviced at a time; after a grant the priority register rotates, so the
+          master that just ran is deprioritised for the next cycle.</li>
+      </ul>
+      <p>These restrict the peak per-master bandwidth and explain why the CPU never saturates the bus —
+        important for an emulator that wants exact memory timing.</p>
+
+      <h2>4. Queues, buffering and coherency</h2>
+      <p>Writes are the expensive part of the memory bus because switching between reads and writes costs
+        idle turn-around cycles. MEM buffers writes and drains them in bursts, and implements a coherency
+        protocol so a master never reads stale data. The queueing architecture every request passes through
+        is described first; the rest covers how the write buffers drain and how coherency is maintained.</p>
+
+      <h3>4.1 Queue architecture</h3>
+      <p>Every request is staged in a dedicated queue inside its own interface before it reaches the
+        arbiter. <strong>Read queues</strong> hold the line <em>address</em>; <strong>write queues</strong>
+        hold the address, the 128-bit data and a byte mask. Each queue lives inside the matching master
+        interface (<code>mem_pi</code>, <code>mem_cp</code>, …); only the <strong>global write buffer</strong>
+        is shared (<code>mem_wrbuf</code>). They are sized to the master's access pattern.</p>
+      <table>
+        <tr><th>Queue</th><th>Owner</th><th>Type</th><th>Depth</th><th>Entry contents</th></tr>
+        <tr><td><code>RQ1</code></td><td>CP</td><td>read</td><td>16</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ2</code></td><td>TC</td><td>read</td><td>16</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ3</code></td><td>VI</td><td>read</td><td>1</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ4</code></td><td>DSP</td><td>read</td><td>1</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ5</code></td><td>IO</td><td>read</td><td>1</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ6</code></td><td>PI</td><td>read</td><td>6</td><td>23-bit line address (2 extra bits return the critical double-word first)</td></tr>
+        <tr><td><code>WQ1</code></td><td>PE</td><td>write</td><td>8</td><td>21-bit address + 128-bit data</td></tr>
+        <tr><td><code>WQ2</code></td><td>DSP</td><td>write</td><td>4</td><td>21-bit address + 128-bit data + 4-bit mask</td></tr>
+        <tr><td><code>WQ3</code></td><td>IO</td><td>write</td><td>4</td><td>21-bit address + 128-bit data</td></tr>
+        <tr><td><code>WQ4</code></td><td>PI</td><td>write</td><td>8</td><td>21-bit address + 128-bit data + 4-bit mask</td></tr>
+        <tr><td><code>WQ0</code></td><td>global</td><td>write</td><td>16</td><td>21-bit address + 128-bit data + 4-bit mask + owner + CP-FIFO flag</td></tr>
+      </table>
+      <ul>
+        <li><strong>Read queues.</strong> CP and TC are 16-deep so they can keep a stream of line reads in
+          flight and absorb memory latency; VI, DSP and IO are single-entry so a software-visible master
+          only ever has one outstanding read; PI is 6-deep so a burst of CPU loads can be queued without
+          stalling the CPU.</li>
+        <li><strong>Write queues (WQ1–WQ4)</strong> are the <em>local</em> write buffers inside each write
+          master's interface. They hold whole lines so the master can burst the data and move on, and they
+          feed the shared global buffer.</li>
+        <li><strong>Global write buffer (WQ0)</strong> collects writes from all four write masters so they
+          can be drained to memory as one contiguous burst. Each entry carries an <strong>owner</strong> tag
+          (which master wrote it) and a <strong>CP-FIFO</strong> flag; the owner tag is what lets the
+          controller flush only the relevant entries when a read address matches a buffered write.</li>
+      </ul>
+      <p><strong>Flow control.</strong> A master is told to pause when its queue is nearly full. CP and TC
+        raise <code>mem_&lt;cp|tc&gt;_reqFull</code> when their 16-deep read queue holds more than 10
+        entries; PI, IO, DSP and VI signal <code>mem_&lt;x&gt;_reqfull</code> when their read queue or local
+        write buffer is close to full. This throttling keeps a busy master from over-running the arbiter.</p>
+
+      <h3>4.2 Local write queues and global write queue</h3>
+      <p>Write flow control has three levels:</p>
+      <ol>
+        <li><strong>Local queue full</strong> — MEM asserts <code>mem_&lt;x&gt;reqfull</code> to stop the
+          master sending.</li>
+        <li><strong>Global queue filling</strong> — when WQ0 reaches ~75–80%, MEM switches the bus to
+          write and drains WQ0 in a burst.</li>
+        <li><strong>Coherency flush</strong> — a flush command forces the buffer empty before a related
+          read (see §4.4).</li>
+      </ol>
+      <p>By concentrating writes into one global queue that drains as a burst, the number of read↔write
+        direction changes on the bus is minimised, which is what makes the buffer worthwhile. Because the
+        buffer is fed by several masters, the write-side arbiter inside <code>mem_wrbuf</code> decides which
+        master's write goes into which free entry; the write dials (§3.3) set how quickly each master's
+        writes are accepted.</p>
+
+      <h3>4.3 Flush / acknowledge handshake</h3>
+      <p>Four masters can write (CPU, PE, DSP, IO), each with a two-wire flush protocol
+        (<code>&lt;x&gt;_memFlushWrBuf</code> → <code>mem_&lt;x&gt;FlushWrAck</code>). A master asserts
+        flush at the end of a DMA write <em>before</em> interrupting the CPU; MEM completes the drain and
+        asserts ack, guaranteeing the data is in main memory (not a buffer).</p>
+
+      <h3>4.4 Coherency cases</h3>
+      <ul>
+        <li><strong>Same unit read-after-write.</strong> DSP and IO have no hardware read/write coherency —
+          a master that writes then reads its own data back must explicitly flush and wait for ack. The
+          CPU (PI) is the exception: every PI read address is checked against the write buffer (local +
+          global); on a match the buffer is flushed first, then the read proceeds.</li>
+        <li><strong>CPU stall / sync.</strong> The read address is raced to memory to save a latency
+          cycle; if a match is found one cycle later, the read result is aborted, the buffer is flushed,
+          and the write data is merged/returned to the CPU at the end of the flush. The CPU must not issue
+          a write to the same address until the read returns, and must <code>sync</code> before starting a
+          DMA after building a buffer.</li>
+        <li><strong>Between different units.</strong> A writer must flush before signalling another unit to
+          read (e.g. PE copies to memory then flushes before VI reads the image). This is the two-wire
+          protocol above.</li>
+        <li><strong>CPU → CP command FIFO.</strong> PI tags the write with
+          <code>pi_mem_fifoWr</code>; MEM delays telling CP until the data is committed to main memory, so
+          the graphics front-end never reads a command before its bytes are visible.</li>
+      </ul>
+
+      <h2>5. Memory protection and interrupts</h2>
+      <p>MEM can protect up to <strong>4 regions</strong> of main memory, with <strong>10-bit page
+        granularity</strong> (1024-byte pages). This is the mechanism the OS uses for
+        <code>OSProtectRange</code> and for trapping invalid memory access.</p>
+
+      <h3>5.1 Region registers (<code>MEM_MARR0..3</code>)</h3>
+      <p>Each region is defined by a <strong>start</strong> and <strong>end</strong> register, each holding
+        the <strong>page number</strong> (physical address <code>&gt;&gt; 10</code>). A region covers
+        <code>MARRn_START ≤ address &lt; MARRn_END</code>. The physical address of every memory transaction
+        is compared against all four regions.</p>
+
+      <h3>5.2 Access mode (<code>MEM_MARR_CONTROL</code>)</h3>
+      <table>
+        <tr><th>Read-enable</th><th>Write-enable</th><th>Meaning</th></tr>
+        <tr><td>1</td><td>1</td><td>Full access (no protection)</td></tr>
+        <tr><td>1</td><td>0</td><td>Read-only (writes denied)</td></tr>
+        <tr><td>0</td><td>1</td><td>Write-only (reads denied)</td></tr>
+        <tr><td>0</td><td>0</td><td>Access denied</td></tr>
+      </table>
+      <p>The 8 control bits are region 0 read/write, region 1 read/write, region 2 read/write, region 3
+        read/write. Reset value is <strong>all enabled</strong> (<code>0xff</code>) — by default nothing is
+        protected.</p>
+
+      <h3>5.3 Interrupts</h3>
+      <ul>
+        <li><code>MEM_INT_ENBL</code> — bit 0..3 = region 0..3 enable, bit 4 = address-error enable.
+          Default all disabled (<code>0x00</code>).</li>
+        <li><code>MEM_INT_STAT</code> — status bits, one per region plus address-error. Reset
+          <code>0x00</code>.</li>
+        <li><code>MEM_INT_CLR</code> — write any value to clear all interrupt status.</li>
+        <li><code>MEM_INT_ADDRL</code> / <code>MEM_INT_ADDRH</code> — low 16 / high 16 bits of the
+          offending address.</li>
+      </ul>
+      <p>An <strong>address error</strong> interrupt is generated when the request address is outside the
+        configured range but still within the 64 Mbyte address space. Beyond 64 Mbytes the PI raises the
+        address error itself and does not forward to MEM.</p>
+      <p>Note: MEM <strong>does not abort</strong> the offending transaction — it completes it and only
+        raises the interrupt. The OS handler decides how to react. The MEM interrupt is OR-ed into the PI
+        as the <code>MEMINT</code> bit (PI <code>INTSR</code> bit 0x80, <code>INTMSK</code> bit 0x80).</p>
+
+      <h2>6. Refresh and bus turnaround</h2>
+      <ul>
+        <li><code>MEM_REFRESH</code> — number of cycles between refresh requests. Reset <code>0x80</code>
+          (128 cycles); a value of <strong>0 disables refresh generation</strong> (must be paired with a
+          non-zero threshold).</li>
+        <li><code>MEM_REFRESH_THHD</code> — the pending-refresh-request threshold above which refresh is
+          promoted to high priority. Reset <code>0x2</code>.</li>
+      </ul>
+      <p>Refresh is normally the lowest priority, but once the pending count reaches the threshold it jumps
+        to just below CPU read. Two rows are refreshed per 10-ns cycle (one row every 5 ns).</p>
+      <p>Bus-turnaround idle cycles are inserted between different operation types to let the pads turn
+        around, and are configurable via <code>MEM_RDTORD</code> (1 or 2 cycles), <code>MEM_RDTOWR</code>
+        (2 or 3 cycles) and <code>MEM_WRTORD</code> (0 or 1 cycle).</p>
+
+      <h2>7. Register map</h2>
+      <p>The MEM registers occupy <code>0xCC004000</code>–<code>0xCC00405C</code>. Each register is
+        <strong>16-bit</strong>; the table shows the byte offset from the base. Offsets are 2× the register
+        index used in the RTL/convention.</p>
+      <table>
+        <tr><th>Addr</th><th>Name</th><th>R/W</th><th>Description</th></tr>
+        <tr><td><code>0x00</code></td><td><code>MEM_MARR0_START</code></td><td>R/W</td><td>Region 0 start page</td></tr>
+        <tr><td><code>0x02</code></td><td><code>MEM_MARR0_END</code></td><td>R/W</td><td>Region 0 end page</td></tr>
+        <tr><td><code>0x04</code></td><td><code>MEM_MARR1_START</code></td><td>R/W</td><td>Region 1 start page</td></tr>
+        <tr><td><code>0x06</code></td><td><code>MEM_MARR1_END</code></td><td>R/W</td><td>Region 1 end page</td></tr>
+        <tr><td><code>0x08</code></td><td><code>MEM_MARR2_START</code></td><td>R/W</td><td>Region 2 start page</td></tr>
+        <tr><td><code>0x0A</code></td><td><code>MEM_MARR2_END</code></td><td>R/W</td><td>Region 2 end page</td></tr>
+        <tr><td><code>0x0C</code></td><td><code>MEM_MARR3_START</code></td><td>R/W</td><td>Region 3 start page</td></tr>
+        <tr><td><code>0x0E</code></td><td><code>MEM_MARR3_END</code></td><td>R/W</td><td>Region 3 end page</td></tr>
+        <tr><td><code>0x10</code></td><td><code>MEM_MARR_CONTROL</code></td><td>R/W</td><td>Per-region read/write enable</td></tr>
+        <tr><td><code>0x12</code></td><td><code>MEM_CP_BW_DIAL</code></td><td>R/W</td><td>CP read bandwidth dial (1.8)</td></tr>
+        <tr><td><code>0x14</code></td><td><code>MEM_TC_BW_DIAL</code></td><td>R/W</td><td>TC read bandwidth dial (1.8)</td></tr>
+        <tr><td><code>0x16</code></td><td><code>MEM_PE_BW_DIAL</code></td><td>R/W</td><td>PE write bandwidth dial (1.8)</td></tr>
+        <tr><td><code>0x18</code></td><td><code>MEM_CPUR_BW_DIAL</code></td><td>R/W</td><td>CPU read bandwidth dial (1.8)</td></tr>
+        <tr><td><code>0x1A</code></td><td><code>MEM_CPUW_BW_DIAL</code></td><td>R/W</td><td>CPU write bandwidth dial (1.8)</td></tr>
+        <tr><td><code>0x1C</code></td><td><code>MEM_INT_ENBL</code></td><td>R/W</td><td>Interrupt enables</td></tr>
+        <tr><td><code>0x1E</code></td><td><code>MEM_INT_STAT</code></td><td>RO</td><td>Interrupt status</td></tr>
+        <tr><td><code>0x20</code></td><td><code>MEM_INT_CLR</code></td><td>W</td><td>Clear all interrupt status</td></tr>
+        <tr><td><code>0x22</code></td><td><code>MEM_INT_ADDRL</code></td><td>RO</td><td>Offending address, bits 15:0</td></tr>
+        <tr><td><code>0x24</code></td><td><code>MEM_INT_ADDRH</code></td><td>RO</td><td>Offending address, bits 25:16</td></tr>
+        <tr><td><code>0x26</code></td><td><code>MEM_REFRESH</code></td><td>R/W</td><td>Cycles between refresh</td></tr>
+        <tr><td><code>0x28</code></td><td><code>MEM_CONFIG</code></td><td>R/W</td><td>Memory geometry config</td></tr>
+        <tr><td><code>0x2A</code></td><td><code>MEM_LATENCY</code></td><td>R/W</td><td>Memory latency (3–6 cycles)</td></tr>
+        <tr><td><code>0x2C</code></td><td><code>MEM_RDTORD</code></td><td>R/W</td><td>Read→read idle cycles</td></tr>
+        <tr><td><code>0x2E</code></td><td><code>MEM_RDTOWR</code></td><td>R/W</td><td>Read→write idle cycles</td></tr>
+        <tr><td><code>0x30</code></td><td><code>MEM_WRTORD</code></td><td>R/W</td><td>Write→read idle cycles</td></tr>
+        <tr><td><code>0x32</code></td><td><code>MEM_CP_REQCOUNTH</code></td><td>R/W</td><td>CP request counter, high 16 (31:16)</td></tr>
+        <tr><td><code>0x34</code></td><td><code>MEM_CP_REQCOUNTL</code></td><td>R/W</td><td>CP request counter, low 16 (15:0)</td></tr>
+        <tr><td><code>0x36</code></td><td><code>MEM_TC_REQCOUNTH</code></td><td>R/W</td><td>TC request counter, high</td></tr>
+        <tr><td><code>0x38</code></td><td><code>MEM_TC_REQCOUNTL</code></td><td>R/W</td><td>TC request counter, low</td></tr>
+        <tr><td><code>0x3A</code></td><td><code>MEM_CPUR_REQCOUNTH</code></td><td>R/W</td><td>CPU read counter, high</td></tr>
+        <tr><td><code>0x3C</code></td><td><code>MEM_CPUR_REQCOUNTL</code></td><td>R/W</td><td>CPU read counter, low</td></tr>
+        <tr><td><code>0x3E</code></td><td><code>MEM_CPUW_REQCOUNTH</code></td><td>R/W</td><td>CPU write counter, high</td></tr>
+        <tr><td><code>0x40</code></td><td><code>MEM_CPUW_REQCOUNTL</code></td><td>R/W</td><td>CPU write counter, low</td></tr>
+        <tr><td><code>0x42</code></td><td><code>MEM_DSP_REQCOUNTH</code></td><td>R/W</td><td>DSP counter, high</td></tr>
+        <tr><td><code>0x44</code></td><td><code>MEM_DSP_REQCOUNTL</code></td><td>R/W</td><td>DSP counter, low</td></tr>
+        <tr><td><code>0x46</code></td><td><code>MEM_IO_REQCOUNTH</code></td><td>R/W</td><td>IO counter, high</td></tr>
+        <tr><td><code>0x48</code></td><td><code>MEM_IO_REQCOUNTL</code></td><td>R/W</td><td>IO counter, low</td></tr>
+        <tr><td><code>0x4A</code></td><td><code>MEM_VI_REQCOUNTH</code></td><td>R/W</td><td>VI counter, high</td></tr>
+        <tr><td><code>0x4C</code></td><td><code>MEM_VI_REQCOUNTL</code></td><td>R/W</td><td>VI counter, low</td></tr>
+        <tr><td><code>0x4E</code></td><td><code>MEM_PE_REQCOUNTH</code></td><td>R/W</td><td>PE counter, high</td></tr>
+        <tr><td><code>0x50</code></td><td><code>MEM_PE_REQCOUNTL</code></td><td>R/W</td><td>PE counter, low</td></tr>
+        <tr><td><code>0x52</code></td><td><code>MEM_RF_REQCOUNTH</code></td><td>R/W</td><td>Refresh counter, high</td></tr>
+        <tr><td><code>0x54</code></td><td><code>MEM_RF_REQCOUNTL</code></td><td>R/W</td><td>Refresh counter, low</td></tr>
+        <tr><td><code>0x56</code></td><td><code>MEM_FI_REQCOUNTH</code></td><td>R/W</td><td>Forced-idle counter, high</td></tr>
+        <tr><td><code>0x58</code></td><td><code>MEM_FI_REQCOUNTL</code></td><td>R/W</td><td>Forced-idle counter, low</td></tr>
+        <tr><td><code>0x5A</code></td><td><code>MEM_DRV_STRENGTH</code></td><td>R/W</td><td>Pad drive strength</td></tr>
+        <tr><td><code>0x5C</code></td><td><code>MEM_REFRESH_THHD</code></td><td>R/W</td><td>Refresh threshold</td></tr>
+      </table>
+
+      <h2>8. Register fields</h2>
+      <h3>8.1 <code>MEM_MARRn_START</code> / <code>MEM_MARRn_END</code> (16-bit)</h3>
+      <p>The start/end page number of region n:</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>15:0</td><td><code>PAGE</code></td><td>Page number (<code>physical_address &gt;&gt; 10</code>)</td></tr>
+      </table>
+
+      <h3>8.2 <code>MEM_MARR_CONTROL</code> (0x10, 16-bit)</h3>
+      <p>Reset value <code>0xff</code> (all fully accessible):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>MARR0_RDEN</code></td><td>Reads within region 0 allowed</td></tr>
+        <tr><td>1</td><td><code>MARR0_WREN</code></td><td>Writes within region 0 allowed</td></tr>
+        <tr><td>2</td><td><code>MARR1_RDEN</code></td><td>Region 1 read enable</td></tr>
+        <tr><td>3</td><td><code>MARR1_WREN</code></td><td>Region 1 write enable</td></tr>
+        <tr><td>4</td><td><code>MARR2_RDEN</code></td><td>Region 2 read enable</td></tr>
+        <tr><td>5</td><td><code>MARR2_WREN</code></td><td>Region 2 write enable</td></tr>
+        <tr><td>6</td><td><code>MARR3_RDEN</code></td><td>Region 3 read enable</td></tr>
+        <tr><td>7</td><td><code>MARR3_WREN</code></td><td>Region 3 write enable</td></tr>
+      </table>
+
+      <h3>8.3 <code>MEM_*_BW_DIAL</code> (0x12, 0x14, 0x16, 0x18, 0x1A — 16-bit)</h3>
+      <p>8-bit fraction (format 1.8), low 8 bits used. Added to an accumulator every cycle; the master is
+        admitted when bit 8 is set. <strong>1.00</strong> (<code>0x100</code>) = always enabled (default);
+        smaller values throttle.</p>
+
+      <h3>8.4 <code>MEM_INT_ENBL</code> (0x1C, 16-bit)</h3>
+      <p>Reset <code>0x00</code> (all disabled):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>MARR0_IE</code></td><td>Region 0 interrupt enable</td></tr>
+        <tr><td>1</td><td><code>MARR1_IE</code></td><td>Region 1 interrupt enable</td></tr>
+        <tr><td>2</td><td><code>MARR2_IE</code></td><td>Region 2 interrupt enable</td></tr>
+        <tr><td>3</td><td><code>MARR3_IE</code></td><td>Region 3 interrupt enable</td></tr>
+        <tr><td>4</td><td><code>ADERR_IE</code></td><td>Address-error interrupt enable</td></tr>
+      </table>
+
+      <h3>8.5 <code>MEM_INT_STAT</code> (0x1E, 16-bit, read-only)</h3>
+      <p>Reset <code>0x00</code>. Mirrors the enable layout; a bit is set when a violation or address error
+        occurred.</p>
+
+      <h3>8.6 <code>MEM_INT_CLR</code> (0x20, 16-bit, write-only)</h3>
+      <p>Writing any value clears the interrupt status register.</p>
+
+      <h3>8.7 <code>MEM_INT_ADDRL</code> / <code>MEM_INT_ADDRH</code> (0x22 / 0x24, 16-bit, read-only)</h3>
+      <p><code>ADDRL</code> = bits 15:0 and <code>ADDRH</code> = bits 25:16 of the offending address.</p>
+
+      <h3>8.8 <code>MEM_REFRESH</code> (0x26, 16-bit)</h3>
+      <p>Cycles between refresh requests. Reset <code>0x80</code> (128). <strong>0 disables refresh</strong>
+        (use with a non-zero <code>MEM_REFRESH_THHD</code>).</p>
+
+      <h3>8.9 <code>MEM_CONFIG</code> (0x28, 16-bit)</h3>
+      <table>
+        <tr><th>Value</th><th>Config</th></tr>
+        <tr><td><code>0b00</code></td><td>16 Mbit (single device)</td></tr>
+        <tr><td><code>0b01</code></td><td>2×16 Mbit</td></tr>
+        <tr><td><code>0b10</code></td><td>24 Mbit</td></tr>
+        <tr><td><code>0b11</code></td><td>2×24 Mbit</td></tr>
+      </table>
+      <p>Retail HW2 uses <strong><code>0b10</code></strong> for the 24 MB configuration; the OS writes it
+        during initialisation (and the memory-controller size register reports "2" for a 24 MB system).</p>
+
+      <h3>8.10 <code>MEM_LATENCY</code> (0x2A, 16-bit)</h3>
+      <p>The programmable memory latency (3–6 cycles) used to align the read-data strobes.</p>
+
+      <h3>8.11 <code>MEM_RDTORD</code> / <code>MEM_RDTOWR</code> / <code>MEM_WRTORD</code> (16-bit)</h3>
+      <p>Turn-around idle taps. <code>RDTORD</code> 0=1 cycle,1=2; <code>RDTOWR</code> 0=2,1=3;
+        <code>WRTORD</code> 0=0,1=1. Reset <code>0</code>.</p>
+
+      <h3>8.12 <code>MEM_*_REQCOUNTH</code> / <code>MEM_*_REQCOUNTL</code> (16-bit)</h3>
+      <p>32-bit performance counters split into high (31:16) and low (15:0) halves — one per master (CP,
+        TC, CPU read, CPU write, DSP, IO, VI, PE) plus refresh (<code>RF</code>) and forced-idle
+        (<code>FI</code>). Write 0 to clear. The <code>FI</code> counter is 33 bits and increments every
+        idle cycle; the <code>RF</code> counter counts refresh cycles. Counters saturate.</p>
+
+      <h3>8.13 <code>MEM_DRV_STRENGTH</code> (0x5A, 16-bit)</h3>
+      <p>Pad drive-strength control for the memory data/clock pads.</p>
+
+      <h3>8.14 <code>MEM_REFRESH_THHD</code> (0x5C, 16-bit)</h3>
+      <p>Refresh threshold, bits 2:0. Reset <code>0x2</code>. When pending refresh requests reach this
+        value, refresh is promoted to high priority. To generate <em>no</em> refresh cycles at all, set
+        this non-zero together with <code>MEM_REFRESH = 0</code>.</p>
+
+      <h2>9. Emulator notes</h2>
+      <p>Modelling MEM correctly is the difference between a GameCube that "mostly works" and one that
+        behaves with the right timing and protection semantics.</p>
+      <ol>
+        <li><strong>Flat memory array.</strong> The 24 MB main RAM is a plain byte array. Ignore the two
+          dies, the quad-clock and the MAC — model them as a single 64-bit wide, faster-than-core memory.
+          The effective consequence is that the arbiter can keep the memory almost continuously busy.</li>
+        <li><strong>Model the arbiter, not the pads.</strong> Keep a per-master request bitmask and a
+          rotating priority. Serve CPU (PI) read first, then the write-buffer flush, then refresh (promoted
+          when its threshold is exceeded), then round-robin among the pending GFX (CP/TC) and system
+          (DSP/IO/VI) masters. The bandwidth dials act as a pre-arbitration throttle.</li>
+        <li><strong>Cache-line transactions only.</strong> Every access is a 32-byte burst. A 64-bit master
+          takes 4 beats, a 128-bit master 2 beats. Deliver reads in-order; for a non-aligned CPU read
+          return the critical double-word first.</li>
+        <li><strong>Model the queues.</strong> Use the per-master queue depths of §4.1: CP/TC are 16-deep
+          (raise <code>reqFull</code> when more than 10 entries are pending), PI reads are 6-deep,
+          VI/DSP/IO are single-outstanding, and the write queues 8/4/4/8 feed a 16-entry global buffer. The
+          depths bound how many requests each master can keep in flight and when flow control engages, so
+          emulating them reproduces real bus contention.</li>
+        <li><strong>Write buffering and flush.</strong> Implement the local write queues feeding the global
+          write queue, and flush it as a burst when it reaches ~75–80% full or when a CPU read address
+          matches a buffered write. Provide the flush/ack pair per write master and the implicit
+          read-before-write flush for CPU reads. Skipping coherency produces stale reads of just-written DMA
+          data.</li>
+        <li><strong>Store-width quirk.</strong> The bus only carries 64-bit transactions. An uncached
+          <strong>byte</strong> or <strong>halfword</strong> store writes the whole aligned 8-byte block with
+          the byte/halfword replicated into its lane. Harmless for cached (cache-line) writes. Keep it so
+          uncached <code>memset</code>-style code and fast-clear routines behave as on real hardware.</li>
+        <li><strong>Memory protection.</strong> Implement the four 10-bit-page regions and the read/write-enable
+          bits. Check the physical address of every transaction against all four regions; on a violation set
+          the status bit, latch the address and raise the MEM interrupt (but still complete the transaction).
+          Also raise the address-error interrupt for an in-range-but-unconfigured address.</li>
+        <li><strong>Refresh.</strong> For exact throughput, count cycles and insert refresh bursts using
+          <code>MEM_REFRESH</code>/<code>MEM_REFRESH_THHD</code>; for functional correctness refresh can be
+          modelled as a no-op.</li>
+        <li><strong>Interrupt.</strong> The MEM interrupt enters the PI as <code>MEMINT</code> (bit 0x80). The
+          retail OS installs a single handler that reads <code>MEM_INT_ADDRL/H</code>, clears
+          <code>MEM_INT_CLR</code> and dispatches a protection error.</li>
+        <li><strong>Performance counters.</strong> These are for tuning; an emulator can expose them for
+          diagnostics but does not need them for correctness.</li>
+      </ol>
+
+      <h2>10. Related specifications</h2>
+      <ul>
+        <li><a href="flipper.html">Flipper chipset</a></li>
+        <li><a href="video-interface.html">Video Interface</a></li>
+        <li><a href="gekko.html">IBM Gekko CPU</a></li>
+        <li><a href="clock-generator.html">Clock generator</a></li>
+        <li><a href="motherboard.html">Motherboard &amp; connectors</a></li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

@@ -25,6 +25,7 @@ Flipper.
 | 5 | Disk Drive | [disk-drive.md](disk-drive.md) | 3" mini-DVD, CAV, copy protection, intelligent MN-10200 drive, DI interface & signals, streaming audio |
 | 6 | Peripheral devices (EXI, SI) | [peripherals.md](peripherals.md) | EXI channels/devices/transfer modes, SI channels/polling, controller protocol & hardware |
 | 7 | Video Interface (VI) | [video-interface.md](video-interface.md) | scan-out engine; full register map; H/V timing tables; horizontal scaler/filter; light-gun & 3D; emulator model |
+| 8 | Memory Interface (MEM) | [memory-interface.md](memory-interface.md) | arbitration hub & arbiter; all memory masters; queues & write buffering; coherency; MARR protection; the 1T-SRAM "Splash" interface; emulator model |
 
 ## Key system parameters (quick reference)
 
