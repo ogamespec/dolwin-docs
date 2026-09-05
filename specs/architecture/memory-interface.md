@@ -272,18 +272,57 @@ These restrictions matter for an emulator that wants to reproduce exact memory
 timing: they bound the peak per-master bandwidth and explain why the CPU never
 saturates the bus.
 
-## 4. Write buffering and coherency
+## 4. Queues, buffering and coherency
 
 Writes are the expensive part of the memory bus because switching between reads
 and writes costs idle turn-around cycles. MEM therefore buffers writes and drains
 them in bursts, and it implements a coherency protocol so that a master never
-reads stale data.
+reads stale data. The first subsection below describes the queueing architecture
+every request passes through; the rest covers how the write buffers drain and how
+coherency is maintained.
 
-### 4.1 Local write queues and global write queue
+### 4.1 Queue architecture
 
-Each **write master** has a small **local write queue** (PE 8, CPU 8, DSP 4, IO 4
-entries). These feed the single **global write queue (WQ0, depth 16)** in the
-write buffer. The global queue is what is actually drained to memory.
+Every request is staged in a dedicated queue inside its own interface before it
+reaches the arbiter. **Read queues** hold the line *address*; **write queues**
+hold the address, the 128-bit data and a byte mask. Each queue lives inside the
+matching master interface (`mem_pi`, `mem_cp`, …); only the **global write
+buffer** is shared (`mem_wrbuf`). They are sized to the master's access pattern.
+
+| Queue | Owner | Type | Depth | Entry contents |
+|---|---|---|---|---|
+| RQ1 | CP | read | 16 | 21-bit line address |
+| RQ2 | TC | read | 16 | 21-bit line address |
+| RQ3 | VI | read | 1 | 21-bit line address |
+| RQ4 | DSP | read | 1 | 21-bit line address |
+| RQ5 | IO | read | 1 | 21-bit line address |
+| RQ6 | PI | read | 6 | 23-bit line address (2 extra bits return the critical double-word first) |
+| WQ1 | PE | write | 8 | 21-bit address + 128-bit data |
+| WQ2 | DSP | write | 4 | 21-bit address + 128-bit data + 4-bit mask |
+| WQ3 | IO | write | 4 | 21-bit address + 128-bit data |
+| WQ4 | PI | write | 8 | 21-bit address + 128-bit data + 4-bit mask |
+| WQ0 | global | write | 16 | 21-bit address + 128-bit data + 4-bit mask + owner + CP-FIFO flag |
+
+- **Read queues.** CP and TC are 16-deep so they can keep a stream of line reads
+  in flight and absorb memory latency; VI, DSP and IO are single-entry so a
+  software-visible master only ever has one outstanding read; PI is 6-deep so a
+  burst of CPU loads can be queued without stalling the CPU.
+- **Write queues (WQ1–WQ4)** are the *local* write buffers inside each write
+  master's interface. They hold whole lines so the master can burst the data and
+  move on, and they feed the shared global buffer.
+- **Global write buffer (WQ0)** collects writes from all four write masters so
+  they can be drained to memory as one contiguous burst. Each entry carries an
+  **owner** tag (which master wrote it) and a **CP-FIFO** flag; the owner tag is
+  what lets the controller flush only the relevant entries when a read address
+  matches a buffered write.
+
+**Flow control.** A master is told to pause when its queue is nearly full. CP and
+TC raise `mem_<cp|tc>_reqFull` when their 16-deep read queue holds more than 10
+entries; PI, IO, DSP and VI signal `mem_<x>_reqfull` when their read queue or
+local write buffer is close to full. This throttling keeps a busy master from
+over-running the arbiter.
+
+### 4.2 Local write queues and global write queue
 
 Write flow control has three levels:
 
@@ -291,13 +330,15 @@ Write flow control has three levels:
 2. **Global queue filling** — when WQ0 reaches ~75–80%, MEM switches the bus to
    write and drains WQ0 in a burst.
 3. **Coherency flush** — a flush command forces the buffer empty before a related
-   read (see below).
+   read (see §4.4).
 
 By concentrating writes into one global queue that drains as a burst, the number
 of read↔write direction changes on the bus is minimised, which is what makes the
-buffer worthwhile.
+buffer worthwhile. Because the buffer is fed by several masters, the write-side
+arbiter inside `mem_wrbuf` decides which master's write goes into which free
+entry; the write dials (§3.3) set how quickly each master's writes are accepted.
 
-### 4.2 Flush / acknowledge handshake
+### 4.3 Flush / acknowledge handshake
 
 Four masters can write (CPU, PE, DSP, IO). Each has a two-wire flush protocol:
 `<x>_memFlushWrBuf` → `mem_<x>FlushWrAck`. A master asserts flush at the end of a
@@ -305,7 +346,7 @@ DMA write **before** interrupting the CPU; MEM completes the drain and asserts
 ack, guaranteeing the data is in main memory (not in a buffer) before anyone else
 reads it.
 
-### 4.3 Coherency cases
+### 4.4 Coherency cases
 
 - **Same unit read-after-write.** DSP and IO have no hardware read/write coherency
   — a master that writes then wants to read its own data back must explicitly
@@ -586,9 +627,12 @@ and one that behaves with the right timing and protection semantics.
 3. **Cache-line transactions only.** Every memory access is a 32-byte burst. A
    64-bit master takes 4 beats, a 128-bit master 2 beats. Deliver reads
    in-order, and for a non-aligned CPU read return the critical double-word first.
-4. **Single-outstanding for the slow masters.** VI, DSP and IO issue one request
-   at a time (a new request waits for the previous ack). CP/TC are queued (they
-   may have several in flight). This bounds how quickly each can fill the bus.
+4. **Model the queues.** Use the per-master queue depths of §4.1: CP/TC are 16-deep
+   (raise `reqFull` when more than 10 entries are pending), PI reads are 6-deep,
+   VI/DSP/IO are single-outstanding, and the write queues 8/4/4/8 feed a 16-entry
+   global buffer. The depths bound how many requests each master can keep in
+   flight and when flow control engages, so emulating them reproduces real bus
+   contention.
 5. **Write buffering and flush.** Implement the local write queues feeding the
    global write queue, and flush it as a burst when it reaches ~75–80% full or
    when a CPU read address matches a buffered write. Provide the flush/ack pair
@@ -632,7 +676,7 @@ and one that behaves with the right timing and protection semantics.
 - `WEB/anandtech.com/1T-SRAM.htm` — the "Splash" 1T-SRAM outside Flipper: 24 MB,
   2× 12 MB, 64-bit bus.
 - **US Patent 8,098,255** ("Graphics processing system with enhanced memory
-  controller") — the arbitration methodology, queue depths, write buffering and
-  register semantics, summarised here.
+  controller") — the arbitration methodology, the FIG. 9 queue sizing (used in
+  §4.1), write buffering and register semantics, summarised here.
 - **US Patent 6,609,977** (External interfaces) — Fig. 12E/12F show the Flipper↔
   1T-SRAM ("Splash") pad groups used in §2.6.

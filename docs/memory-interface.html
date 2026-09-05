@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
@@ -262,15 +262,51 @@
       <p>These restrict the peak per-master bandwidth and explain why the CPU never saturates the bus —
         important for an emulator that wants exact memory timing.</p>
 
-      <h2>4. Write buffering and coherency</h2>
+      <h2>4. Queues, buffering and coherency</h2>
       <p>Writes are the expensive part of the memory bus because switching between reads and writes costs
         idle turn-around cycles. MEM buffers writes and drains them in bursts, and implements a coherency
-        protocol so a master never reads stale data.</p>
+        protocol so a master never reads stale data. The queueing architecture every request passes through
+        is described first; the rest covers how the write buffers drain and how coherency is maintained.</p>
 
-      <h3>4.1 Local write queues and global write queue</h3>
-      <p>Each write master has a small <strong>local write queue</strong> (PE 8, CPU 8, DSP 4, IO 4
-        entries). These feed the single <strong>global write queue (WQ0, depth 16)</strong> in the write
-        buffer, which is what is actually drained to memory.</p>
+      <h3>4.1 Queue architecture</h3>
+      <p>Every request is staged in a dedicated queue inside its own interface before it reaches the
+        arbiter. <strong>Read queues</strong> hold the line <em>address</em>; <strong>write queues</strong>
+        hold the address, the 128-bit data and a byte mask. Each queue lives inside the matching master
+        interface (<code>mem_pi</code>, <code>mem_cp</code>, …); only the <strong>global write buffer</strong>
+        is shared (<code>mem_wrbuf</code>). They are sized to the master's access pattern.</p>
+      <table>
+        <tr><th>Queue</th><th>Owner</th><th>Type</th><th>Depth</th><th>Entry contents</th></tr>
+        <tr><td><code>RQ1</code></td><td>CP</td><td>read</td><td>16</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ2</code></td><td>TC</td><td>read</td><td>16</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ3</code></td><td>VI</td><td>read</td><td>1</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ4</code></td><td>DSP</td><td>read</td><td>1</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ5</code></td><td>IO</td><td>read</td><td>1</td><td>21-bit line address</td></tr>
+        <tr><td><code>RQ6</code></td><td>PI</td><td>read</td><td>6</td><td>23-bit line address (2 extra bits return the critical double-word first)</td></tr>
+        <tr><td><code>WQ1</code></td><td>PE</td><td>write</td><td>8</td><td>21-bit address + 128-bit data</td></tr>
+        <tr><td><code>WQ2</code></td><td>DSP</td><td>write</td><td>4</td><td>21-bit address + 128-bit data + 4-bit mask</td></tr>
+        <tr><td><code>WQ3</code></td><td>IO</td><td>write</td><td>4</td><td>21-bit address + 128-bit data</td></tr>
+        <tr><td><code>WQ4</code></td><td>PI</td><td>write</td><td>8</td><td>21-bit address + 128-bit data + 4-bit mask</td></tr>
+        <tr><td><code>WQ0</code></td><td>global</td><td>write</td><td>16</td><td>21-bit address + 128-bit data + 4-bit mask + owner + CP-FIFO flag</td></tr>
+      </table>
+      <ul>
+        <li><strong>Read queues.</strong> CP and TC are 16-deep so they can keep a stream of line reads in
+          flight and absorb memory latency; VI, DSP and IO are single-entry so a software-visible master
+          only ever has one outstanding read; PI is 6-deep so a burst of CPU loads can be queued without
+          stalling the CPU.</li>
+        <li><strong>Write queues (WQ1–WQ4)</strong> are the <em>local</em> write buffers inside each write
+          master's interface. They hold whole lines so the master can burst the data and move on, and they
+          feed the shared global buffer.</li>
+        <li><strong>Global write buffer (WQ0)</strong> collects writes from all four write masters so they
+          can be drained to memory as one contiguous burst. Each entry carries an <strong>owner</strong> tag
+          (which master wrote it) and a <strong>CP-FIFO</strong> flag; the owner tag is what lets the
+          controller flush only the relevant entries when a read address matches a buffered write.</li>
+      </ul>
+      <p><strong>Flow control.</strong> A master is told to pause when its queue is nearly full. CP and TC
+        raise <code>mem_&lt;cp|tc&gt;_reqFull</code> when their 16-deep read queue holds more than 10
+        entries; PI, IO, DSP and VI signal <code>mem_&lt;x&gt;_reqfull</code> when their read queue or local
+        write buffer is close to full. This throttling keeps a busy master from over-running the arbiter.</p>
+
+      <h3>4.2 Local write queues and global write queue</h3>
       <p>Write flow control has three levels:</p>
       <ol>
         <li><strong>Local queue full</strong> — MEM asserts <code>mem_&lt;x&gt;reqfull</code> to stop the
@@ -278,16 +314,21 @@
         <li><strong>Global queue filling</strong> — when WQ0 reaches ~75–80%, MEM switches the bus to
           write and drains WQ0 in a burst.</li>
         <li><strong>Coherency flush</strong> — a flush command forces the buffer empty before a related
-          read.</li>
+          read (see §4.4).</li>
       </ol>
+      <p>By concentrating writes into one global queue that drains as a burst, the number of read↔write
+        direction changes on the bus is minimised, which is what makes the buffer worthwhile. Because the
+        buffer is fed by several masters, the write-side arbiter inside <code>mem_wrbuf</code> decides which
+        master's write goes into which free entry; the write dials (§3.3) set how quickly each master's
+        writes are accepted.</p>
 
-      <h3>4.2 Flush / acknowledge handshake</h3>
+      <h3>4.3 Flush / acknowledge handshake</h3>
       <p>Four masters can write (CPU, PE, DSP, IO), each with a two-wire flush protocol
         (<code>&lt;x&gt;_memFlushWrBuf</code> → <code>mem_&lt;x&gt;FlushWrAck</code>). A master asserts
         flush at the end of a DMA write <em>before</em> interrupting the CPU; MEM completes the drain and
         asserts ack, guaranteeing the data is in main memory (not a buffer).</p>
 
-      <h3>4.3 Coherency cases</h3>
+      <h3>4.4 Coherency cases</h3>
       <ul>
         <li><strong>Same unit read-after-write.</strong> DSP and IO have no hardware read/write coherency —
           a master that writes then reads its own data back must explicitly flush and wait for ack. The
@@ -513,9 +554,11 @@
         <li><strong>Cache-line transactions only.</strong> Every access is a 32-byte burst. A 64-bit master
           takes 4 beats, a 128-bit master 2 beats. Deliver reads in-order; for a non-aligned CPU read
           return the critical double-word first.</li>
-        <li><strong>Single-outstanding for the slow masters.</strong> VI, DSP and IO issue one request at a
-          time (the next waits for the previous ack). CP/TC are queued (several in flight). This bounds how
-          quickly each fills the bus.</li>
+        <li><strong>Model the queues.</strong> Use the per-master queue depths of §4.1: CP/TC are 16-deep
+          (raise <code>reqFull</code> when more than 10 entries are pending), PI reads are 6-deep,
+          VI/DSP/IO are single-outstanding, and the write queues 8/4/4/8 feed a 16-entry global buffer. The
+          depths bound how many requests each master can keep in flight and when flow control engages, so
+          emulating them reproduces real bus contention.</li>
         <li><strong>Write buffering and flush.</strong> Implement the local write queues feeding the global
           write queue, and flush it as a burst when it reaches ~75–80% full or when a CPU read address
           matches a buffered write. Provide the flush/ack pair per write master and the implicit
