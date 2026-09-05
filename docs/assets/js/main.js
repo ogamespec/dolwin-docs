@@ -73,10 +73,79 @@
     });
   }
 
+  /* ---- Table of contents ---- */
+  function slugify(text) {
+    return text.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-");
+  }
+
+  function buildToc() {
+    document.querySelectorAll("main.wrap article").forEach(function (article) {
+      var headings = article.querySelectorAll("h2, h3");
+      if (!headings.length) return;
+
+      var firstH2 = null;
+      var entries = [];
+      var seen = {};
+      headings.forEach(function (h) {
+        var level = h.tagName === "H2" ? 2 : 3;
+        var text = (h.textContent || "").replace(/\s+/g, " ").trim();
+        if (!text) return;
+        var base = slugify(text) || "section";
+        var id = h.id || base;
+        if (seen[id]) {
+          var n = 2;
+          while (seen[id + "-" + n]) n++;
+          id = base + "-" + n;
+          h.id = id;
+        } else if (!h.id) {
+          h.id = id;
+        }
+        seen[h.id] = true;
+        entries.push({ level: level, text: text, id: h.id });
+        if (level === 2 && !firstH2) firstH2 = h;
+      });
+
+      if (!entries.length || !firstH2) return;
+
+      var nav = document.createElement("nav");
+      nav.className = "toc";
+      nav.setAttribute("aria-label", "Contents");
+
+      var title = document.createElement("div");
+      title.className = "toc-title";
+      title.textContent = "Contents";
+      nav.appendChild(title);
+
+      var rootList = document.createElement("ul");
+      rootList.className = "toc-list";
+      nav.appendChild(rootList);
+
+      var lastH2List = rootList;
+      entries.forEach(function (e) {
+        var li = document.createElement("li");
+        var a = document.createElement("a");
+        a.href = "#" + e.id;
+        a.textContent = e.text;
+        li.appendChild(a);
+        if (e.level === 2) {
+          rootList.appendChild(li);
+          var sub = document.createElement("ul");
+          li.appendChild(sub);
+          lastH2List = sub;
+        } else {
+          lastH2List.appendChild(li);
+        }
+      });
+
+      firstH2.parentNode.insertBefore(nav, firstH2);
+    });
+  }
+
   /* ---- Boot ---- */
   function boot() {
     initTheme();
     injectLogo();
+    buildToc();
     // mark active nav link by location
     var path = window.location.pathname.split("/").pop() || "index.html";
     if (path === "") path = "index.html";
