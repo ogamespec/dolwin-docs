@@ -126,6 +126,12 @@ state:
 - **Vertex Command Descriptor (VCD)** — which attributes are present and whether they are direct or indexed, for position, normal, two colours and up to eight texture coordinates.
 - **Vertex Attribute Table (VAT)** — for each attribute, the component count (`CompCount`), the component width and fixed-point shift (`CompSize`, `Shift`), so the CP knows how to unpack the attribute stream.
 
+The full bit-level layout of `CP_VCD_LO/HI` and the three `CP_VAT_A/B/C` registers
+(including the component/colour format enums and the per-attribute shift) is in
+[command-processor.md](command-processor.md) §5.2–§5.3, and the vertex-cache
+organisation (a 512 × 128-bit dual-ported RAM forming an 8-way set-associative cache)
+is covered in §5.5.
+
 ## 4. Transform / geometry (XF)
 
 The XF takes one vertex at a time and performs object-space → **screen-space**

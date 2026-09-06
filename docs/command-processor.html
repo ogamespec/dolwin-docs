@@ -208,7 +208,7 @@
         <tr><td><code>0x0B</code></td><td><code>CP_ARRAY_STRIDE</code></td><td>Stride of an attribute array</td></tr>
       </table>
       <h3>5.2 Vertex Command Descriptor (VCD)</h3>
-      <p>The VCD says which attributes a vertex carries and how each is sourced. <code>CP_VCD_LO</code> covers the matrix indexes, position, normal and the two colours; <code>CP_VCD_HI</code> covers the texture coordinates. Each attribute is one of:</p>
+      <p>The VCD says which attributes a vertex carries and how each is sourced. <code>CP_VCD_LO</code> covers the matrix indexes, position, normal and the two colours; <code>CP_VCD_HI</code> covers the eight texture coordinates. Each 2-bit field uses the same source encoding:</p>
       <table>
         <tr><th>Value</th><th>Source</th></tr>
         <tr><td><code>0</code></td><td><strong>not present</strong></td></tr>
@@ -216,10 +216,102 @@
         <tr><td><code>2</code></td><td><strong>8-bit indexed</strong></td></tr>
         <tr><td><code>3</code></td><td><strong>16-bit indexed</strong></td></tr>
       </table>
+      <p><code>CP_VCD_LO</code> bit layout:</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>PosMatIdx</code></td><td>Position/normal matrix index present (0/1, always direct)</td></tr>
+        <tr><td>1</td><td><code>Tex0MatIdx</code></td><td>Tex0 matrix index present</td></tr>
+        <tr><td>2..8</td><td><code>Tex1MatIdx</code>..<code>Tex7MatIdx</code></td><td>Tex1..Tex7 matrix index present</td></tr>
+        <tr><td>10:9</td><td><code>Position</code></td><td>Position source (2-bit)</td></tr>
+        <tr><td>12:11</td><td><code>Normal</code></td><td>Normal source</td></tr>
+        <tr><td>14:13</td><td><code>Color0</code></td><td>Colour0 source</td></tr>
+        <tr><td>16:15</td><td><code>Color1</code></td><td>Colour1 source</td></tr>
+      </table>
+      <p><code>CP_VCD_HI</code> bit layout:</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>1:0</td><td><code>Tex0Coord</code></td><td>Tex0 source</td></tr>
+        <tr><td>3:2</td><td><code>Tex1Coord</code></td><td>Tex1 source</td></tr>
+        <tr><td>5:4</td><td><code>Tex2Coord</code></td><td>Tex2 source</td></tr>
+        <tr><td>7:6</td><td><code>Tex3Coord</code></td><td>Tex3 source</td></tr>
+        <tr><td>9:8</td><td><code>Tex4Coord</code></td><td>Tex4 source</td></tr>
+        <tr><td>11:10</td><td><code>Tex5Coord</code></td><td>Tex5 source</td></tr>
+        <tr><td>13:12</td><td><code>Tex6Coord</code></td><td>Tex6 source</td></tr>
+        <tr><td>15:14</td><td><code>Tex7Coord</code></td><td>Tex7 source</td></tr>
+      </table>
       <p>A missing attribute means the hardware uses the register default (e.g. the current matrix index or a constant colour). The matrix-index attributes (position/normal and each texture matrix) are always direct when present. The position and normal matrix indexes are separate RAMs in the XF but share a one-to-one correspondence: if index <code>A</code> is used for the position, index <code>A</code> is used for the normal as well.</p>
       <h3>5.3 Vertex Attribute Table (VAT)</h3>
-      <p>For each present attribute, the VAT gives the <strong>component count</strong>, the <strong>component width/format</strong> and a <strong>fixed-point shift</strong>. It is split across three registers (<code>CP_VAT_A/B/C</code>). The component format for scalar/vector attributes is ubyte, byte, ushort, short or float; for colours it is one of the packed RGB/RGBA formats. The shift field is the position of the binary point from the LSB and applies to all u/short components (and, when <code>ByteDequant</code> is set, to u/byte components).</p>
-      <p><code>CP_VAT_A[32]</code> also carries <code>ByteDequant</code> (must be <code>1</code> for Rev B) and <code>NormalIndex3</code> (whether nine normals use three staggered indexes). <code>CP_VAT_B[31]</code> carries <code>VCacheEnhance</code> (must be <code>1</code>).</p>
+      <p>For each present attribute the VAT gives the <strong>component count</strong>, the <strong>component width/format</strong> and a <strong>fixed-point shift</strong>. One VAT covers one <em>attribute format</em> and is selected per draw by the low 3 bits of the draw opcode (the <code>vat</code> selector), so up to 8 VATs can be active. It is split across three registers — <code>CP_VAT_A</code>, <code>CP_VAT_B</code> and <code>CP_VAT_C</code>.</p>
+      <p><strong>Component format</strong> (<code>CompSize</code>) for scalar/vector attributes (position, normal, texture coordinate):</p>
+      <table>
+        <tr><th>Value</th><th>Format</th></tr>
+        <tr><td><code>0</code></td><td>ubyte</td></tr>
+        <tr><td><code>1</code></td><td>byte</td></tr>
+        <tr><td><code>2</code></td><td>ushort</td></tr>
+        <tr><td><code>3</code></td><td>short</td></tr>
+        <tr><td><code>4</code></td><td>float</td></tr>
+        <tr><td><code>5</code>–<code>7</code></td><td>reserved</td></tr>
+      </table>
+      <p><strong>Colour format</strong> (<code>CompSize</code>) for the two colour channels:</p>
+      <table>
+        <tr><th>Value</th><th>Format</th><th>Components</th></tr>
+        <tr><td><code>0</code></td><td>RGB565</td><td>3 (r,g,b)</td></tr>
+        <tr><td><code>1</code></td><td>RGB888</td><td>3</td></tr>
+        <tr><td><code>2</code></td><td>RGB888x</td><td>3</td></tr>
+        <tr><td><code>3</code></td><td>RGBA4444</td><td>4</td></tr>
+        <tr><td><code>4</code></td><td>RGBA6666</td><td>4</td></tr>
+        <tr><td><code>5</code></td><td>RGBA8888</td><td>4</td></tr>
+      </table>
+      <p><strong>Component count</strong> (<code>CompCount</code>, 1 bit) selects 2 vs 3 components for position, 1 vs 2 for a texture coordinate, 3 vs 9 for a normal, and 3 vs 4 for a colour.</p>
+      <p><code>CP_VAT_A</code> (attribute group A — position, normal, colors, tex0):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>PosCnt</code></td><td>Position components: 0 = (x,y), 1 = (x,y,z)</td></tr>
+        <tr><td>3:1</td><td><code>PosFmt</code></td><td>Position component format</td></tr>
+        <tr><td>8:4</td><td><code>PosShft</code></td><td>Position fixed-point shift</td></tr>
+        <tr><td>9</td><td><code>NrmCnt</code></td><td>Normal count: 0 = 3, 1 = 9</td></tr>
+        <tr><td>12:10</td><td><code>NrmFmt</code></td><td>Normal component format</td></tr>
+        <tr><td>13</td><td><code>Col0Cnt</code></td><td>Colour0 components: 0 = RGB, 1 = RGBA</td></tr>
+        <tr><td>16:14</td><td><code>Col0Fmt</code></td><td>Colour0 format</td></tr>
+        <tr><td>17</td><td><code>Col1Cnt</code></td><td>Colour1 components</td></tr>
+        <tr><td>20:18</td><td><code>Col1Fmt</code></td><td>Colour1 format</td></tr>
+        <tr><td>21</td><td><code>Tex0Cnt</code></td><td>Tex0 components: 0 = (s), 1 = (s,t)</td></tr>
+        <tr><td>24:22</td><td><code>Tex0Fmt</code></td><td>Tex0 component format</td></tr>
+        <tr><td>29:25</td><td><code>Tex0Shft</code></td><td>Tex0 fixed-point shift</td></tr>
+        <tr><td>30</td><td><code>ByteDequant</code></td><td>Rev B: the shift applies to u/byte and u/short components</td></tr>
+        <tr><td>31</td><td><code>NormalIndex3</code></td><td>Rev B: nine normals use three staggered indexes</td></tr>
+      </table>
+      <p><code>CP_VAT_B</code> (attribute group B — tex1..tex4):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>Tex1Cnt</code></td><td>Tex1 components</td></tr>
+        <tr><td>3:1</td><td><code>Tex1Fmt</code></td><td>Tex1 format</td></tr>
+        <tr><td>8:4</td><td><code>Tex1Shft</code></td><td>Tex1 shift</td></tr>
+        <tr><td>9</td><td><code>Tex2Cnt</code></td><td>Tex2 components</td></tr>
+        <tr><td>12:10</td><td><code>Tex2Fmt</code></td><td>Tex2 format</td></tr>
+        <tr><td>17:13</td><td><code>Tex2Shft</code></td><td>Tex2 shift</td></tr>
+        <tr><td>18</td><td><code>Tex3Cnt</code></td><td>Tex3 components</td></tr>
+        <tr><td>21:19</td><td><code>Tex3Fmt</code></td><td>Tex3 format</td></tr>
+        <tr><td>26:22</td><td><code>Tex3Shft</code></td><td>Tex3 shift</td></tr>
+        <tr><td>27</td><td><code>Tex4Cnt</code></td><td>Tex4 components</td></tr>
+        <tr><td>30:28</td><td><code>Tex4Fmt</code></td><td>Tex4 format</td></tr>
+        <tr><td>31</td><td><code>VCacheEnhance</code></td><td>Must be <code>1</code></td></tr>
+      </table>
+      <p><code>CP_VAT_C</code> (attribute group C — tex4 shift, tex5..tex7):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>4:0</td><td><code>Tex4Shft</code></td><td>Tex4 shift</td></tr>
+        <tr><td>5</td><td><code>Tex5Cnt</code></td><td>Tex5 components</td></tr>
+        <tr><td>8:6</td><td><code>Tex5Fmt</code></td><td>Tex5 format</td></tr>
+        <tr><td>13:9</td><td><code>Tex5Shft</code></td><td>Tex5 shift</td></tr>
+        <tr><td>14</td><td><code>Tex6Cnt</code></td><td>Tex6 components</td></tr>
+        <tr><td>17:15</td><td><code>Tex6Fmt</code></td><td>Tex6 format</td></tr>
+        <tr><td>22:18</td><td><code>Tex6Shft</code></td><td>Tex6 shift</td></tr>
+        <tr><td>23</td><td><code>Tex7Cnt</code></td><td>Tex7 components</td></tr>
+        <tr><td>26:24</td><td><code>Tex7Fmt</code></td><td>Tex7 format</td></tr>
+        <tr><td>31:27</td><td><code>Tex7Shft</code></td><td>Tex7 shift</td></tr>
+      </table>
+      <p>The <strong>shift</strong> is the position of the binary point counted from the LSB and applies to all u/short components (and, when <code>ByteDequant</code> is set, to u/byte components). It is how fixed-point vertex data is scaled to the hardware's internal fractional format. <code>VCacheEnhance</code> and <code>ByteDequant</code>/<code>NormalIndex3</code> are Rev-B fields that must be set to <code>1</code> when using the corresponding features.</p>
       <h3>5.4 Arrays, base and stride</h3>
       <p>Indexed attributes are fetched from an <strong>array</strong> in main memory. The array base and stride are set with <code>CP_ARRAY_BASE</code>/<code>CP_ARRAY_STRIDE</code>, which select the array via a 4-bit index:</p>
       <table>
@@ -234,7 +326,26 @@
       <pre><code>MemoryAddress = ArrayBase[I] + index * ArrayStride[I]</code></pre>
       <p>where <code>ArrayBase</code> is 26-bit and <code>ArrayStride</code> is 8-bit (in bytes). An index value of <code>0xFF</code> (8-bit) or <code>0xFFFF</code> (16-bit) skips that vertex.</p>
       <h3>5.5 Vertex cache</h3>
-      <p>Attributes fetched from arrays are cached in an <strong>8 KB, 8-way set-associative</strong> cache, so a vertex shared by several triangles is fetched from memory only once. The cache is invalidated with the <code>V$_Invalidate</code> command. The vertex-cache miss / stall / check counters (§4.6) report cache behaviour.</p>
+      <p>Attributes fetched from an indexed array are cached so a vertex that is shared by several primitives is read from main memory only once. The cache is the subject of a dedicated patent (<strong>US 6,717,577</strong>, "Vertex Cache for 3D Computer Graphics"), which is the authority for its design.</p>
+      <h4>5.5.1 Organization</h4>
+      <p>The cache is a small, low-latency on-chip memory local to the CP, built as a <strong>512 × 128-bit dual-ported RAM</strong> organised as an <strong>8-way set-associative</strong> cache (8 KB total, 64 sets of 8 ways). It is <em>not</em> a general-purpose cache: the tags are customised to deliver vertex data to the graphics engine, and each cache line holds the packed attribute data for an indexed vertex (or part of it).</p>
+      <h4>5.5.2 Why it exists</h4>
+      <p>The cache exists to exploit the <strong>temporal locality</strong> of vertex data. A primitive list references vertices by index, and a given vertex is usually referenced again within a few adjacent primitives. Because the vertex data itself is stored in main memory as separate component <em>arrays</em> (position, normal, colour, texture coordinate), the cache lets the CP build each vertex on the fly and keep recently used ones resident, instead of re-fetching them from memory for every reference. This removes the need either to pre-sort the vertex data in display order or to re-specify each polygon each time it is used.</p>
+      <h4>5.5.3 Access, fill and invalidation</h4>
+      <ul>
+        <li>The vertex stream parser addresses the cache <strong>as if it were the whole of main memory</strong>, keyed by the vertex index and the attribute-array base. On a hit the packed attribute data is returned immediately; on a <strong>miss</strong> the CP fetches the relevant block(s) from the array in main memory (typically via DMA) and fills the line, often <strong>prefetching</strong> the next vertex to hide the memory latency.</li>
+        <li>Because the cached data is still in its packed, quantised form, it is passed through an <strong>inverse-quantizer</strong> before use, which converts any of the supported vertex formats (8-bit / 16-bit fixed-point, or float) into the uniform float representation that the graphics pipeline consumes.</li>
+        <li>The cache is invalidated on demand with the <code>V$_Invalidate</code> command, which flushes the tags so the next indexed access re-fetches from memory.</li>
+        <li>The check / miss / stall counters (§4.6) report cache behaviour: how many accesses were checked, how many missed, and how many stalled waiting for a fill.</li>
+      </ul>
+      <h4>5.5.4 The indexed data it serves</h4>
+      <p>The cache serves the <em>indexed</em> representation, which is built from three levels:</p>
+      <ul>
+        <li>a <strong>primitive list</strong> — the sequence of primitives (triangles, quads, strips, …), each described by a list of vertex indices;</li>
+        <li>a <strong>vertex list</strong> — the indexed vertices those primitives reference, where a single vertex may be used by several primitives;</li>
+        <li>the <strong>component arrays</strong> in main memory (position, normal, two colours, up to eight texture coordinates), each addressed by an index and the per-attribute base/stride of §5.4.</li>
+      </ul>
+      <p>A <strong>vertex descriptor</strong> (the VCD/VAT of §5.2/§5.3) defines, for the whole draw, which attributes are present, their component count and size, and whether each is direct or indexed. Every vertex in a draw uses the same vertex-attribute format, so the CP can unpack, inverse-quantise and assemble the stream uniformly.</p>
       <h2>6. Emulator notes</h2>
       <ol>
         <li><strong>Two register spaces.</strong> Model the <em>host</em> registers (reached at <code>0x0C00_0000</code>, 16-bit data) and the <em>command-stream</em> registers (written via <code>CP_LoadRegs</code> with an 8-bit address and a 32-bit value) separately.</li>
@@ -242,7 +353,7 @@
         <li><strong>Linked vs multi-buffer.</strong> In linked mode the Gekko PI-FIFO write and the CP read pointer advance together and the CP runs whenever the count is non-zero; in multi-buffer mode the program sets both pointers. Underflow/overflow flag the water-mark crossing and stop the CP reading.</li>
         <li><strong>Break point.</strong> When the CP read pointer reaches the break address, stop reading and raise the break interrupt (if enabled).</li>
         <li><strong>Command decode.</strong> Implement the opcode table in §3. For a draw, read the 16-bit vertex count, then for each vertex unpack the attributes per the current VAT/VCD.</li>
-        <li><strong>Indexed attributes.</strong> Compute the array address with <code>base + index * stride</code>, and treat index <code>0xFF</code>/<code>0xFFFF</code> as a skip. Optionally model the 8 KB vertex cache (associative on the array base+index).</li>
+        <li><strong>Indexed attributes.</strong> Compute the array address with <code>base + index * stride</code>, and treat index <code>0xFF</code>/<code>0xFFFF</code> as a skip. Model the 8 KB vertex cache as an 8-way set-associative table keyed on (array base, index); on a miss fetch+fill the line (optionally prefetching), and invalidate it on <code>V$_Invalidate</code>. Feed the fetched packed data through an inverse-quantiser to the XF.</li>
         <li><strong>Display lists.</strong> <code>Call_Object</code> (address, 32-byte count) switches the CP to read from the object region; do not allow nesting.</li>
         <li><strong>XF hand-off.</strong> The assembled vertex stream (position, normal, colour, texture coordinates, per-attribute matrix indexes) is handed to the XF, which is the entry point of the graphics pipeline.</li>
         <li><strong>Interrupt.</strong> The CP raises a single interrupt sense (<code>CPINT</code>) in the PI; it is masked/cleared in the CP via <code>CP_ENABLE</code>/<code>CP_CLR</code> (<code>OVFLINT</code>/<code>UNFLINT</code>/<code>BRKINT</code>).</li>
@@ -261,7 +372,7 @@
         <li><code>RE/GX/gxfifo.txt</code>, <code>RE/GX/scissor.txt</code> — GX FIFO and scissor notes.</li>
         <li><code>RE/GX/GXPrivate.h</code>, <code>RE/GX/GXInit.c</code> — how the system library drives the CP.</li>
         <li><code>HW/acronyms.txt</code> — CP, XF, VAT, VCD, TMEM, GFX glossary.</li>
-        <li><strong>US Patent 6,717,577</strong> (vertex cache) — the vertex-cache organisation.</li>
+        <li><strong>US Patent 6,717,577</strong> (vertex cache) — the 512 × 128-bit dual-ported RAM, the 8-way set-associative organisation, the customised tags, the on-demand/prefetch fill and the inverse-quantiser (§5.5).</li>
         <li><strong>US Patent 7,199,710</strong> (GX FIFO) — the command-FIFO mechanism.</li>
         <li>The Flipper chip RTL is the authority for the CP register field meanings and FIFO behaviour; all facts above are summarised from it.</li>
       </ul>
