@@ -37,27 +37,14 @@ Interface — the Gekko 60x bus, the 16-bit register access, the interrupt
 controller, PI errors, the physical memory map and the Gekko reset — is in
 [processor-interface.md](processor-interface.md).
 
-## 2. Memory interface (MI) and memory protection
+### 1.1 Physical memory map (decoded by the PI)
 
-The memory interface is the arbitration hub. Its bus users (masters) are:
-
-- **PI** (the Gekko)
-- **CP** (command processor / GFX)
-- **TC** (texture cache)
-- **PE** (pixel engine, for EFB reads/writes and copies)
-- **IO** (peripheral DMA)
-- **DSP**
-- **VI** (video frame buffer reads)
-
-plus a write-buffer path and an external controller (`mem_extctl`) that owns the
-ARAM SDRAM.
-
-The complete register-level, emulator-focused description of the memory interface —
-the arbiter, the per-master queues and data paths, write buffering and coherency,
-memory protection, and the external 1T-SRAM ("Splash") interface — is in
-[memory-interface.md](memory-interface.md).
-
-### 2.1 Memory map (physical, Flipper)
+The CPU's physical address map is decoded by the **Processor Interface (PI)** —
+PI is the only CPU path into the console, and it routes each address to main
+memory, the embedded framebuffer, the register space, the graphics FIFO, or the
+boot ROM. (MI is only the arbiter that services the memory-master requests; it
+does not define this map. The full PI decode is in
+[processor-interface.md](processor-interface.md) §6.)
 
 | Address | Size | Resource |
 |---|---|---|
@@ -90,13 +77,33 @@ A separate *effective*-address map (as seen by the CPU through the MMU) mirrors
 this and adds the write-back/write-through (cached/uncached) aliases of main RAM
 at `0x80000000` / `0xC0000000` and the locked-cache scratchpad at `0xE0000000`.
 
-### 2.2 Memory protection
+## 2. Memory interface (MI) and memory protection
+
+The memory interface is the arbitration hub. Its bus users (masters) are:
+
+- **PI** (the Gekko)
+- **CP** (command processor / GFX)
+- **TC** (texture cache)
+- **PE** (pixel engine, for EFB reads/writes and copies)
+- **IO** (peripheral DMA)
+- **DSP**
+- **VI** (video frame buffer reads)
+
+plus a write-buffer path and an external controller (`mem_extctl`) that owns the
+ARAM SDRAM.
+
+The complete register-level, emulator-focused description of the memory interface —
+the arbiter, the per-master queues and data paths, write buffering and coherency,
+memory protection, and the external 1T-SRAM ("Splash") interface — is in
+[memory-interface.md](memory-interface.md).
+
+### 2.1 Memory protection
 
 MI provides protection for up to **4 regions** of main memory, each a 1024-byte
 page with one of four access modes (deny / read-only / write-only / full). A
 violation raises one of four dedicated interrupts (`MEM_0`–`MEM_3`).
 
-### 2.3 Undocumented store quirk
+### 2.2 Undocumented store quirk
 
 The main-memory bus only carries 64-bit transactions. An **uncached byte** or
 halfword store therefore ends up writing a full 8-byte aligned block (the byte is
