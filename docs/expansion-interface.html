@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Expansion Interface (EXI)</title>
+  <meta name="description" content="GameCube Expansion Interface (EXI): the three expansion channels and chip-selects, immediate/DMA/ROM transfer modes, the EXI clock rates and the SI/EXI clock lock, the EXI0 boot-ROM descrambler, and the per-channel register map. Emulator model." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="icon" href="assets/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="assets/cube.svg" />
+  <link rel="apple-touch-icon" href="assets/icon-512.png" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html"><span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html">Audio Interface</a>
+      <a href="memory-interface.html">Memory Interface</a>
+      <a href="processor-interface.html">Processor Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="peripherals.html">Peripherals (EXI & SI)</a>
+      <a href="serial-interface.html">Serial Interface (SI)</a>
+      <a href="expansion-interface.html" class="active">Expansion Interface (EXI)</a>
+    </nav>
+    <div class="theme-toggle"><span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Expansion Interface (EXI)</p>
+      <h1>GameCube — Expansion Interface (EXI)</h1>
+      <blockquote><strong>EXI</strong> (the <strong>Expansion Interface</strong>) is the general-purpose peripheral bus master inside the <strong>Flipper</strong> ASIC's IO block. Flipper exposes <strong>three</strong> independent EXI channels, each a serial, full-duplex, byte-oriented bus with its own clock and its own set of active-low chip selects. EXI is how the console talks to the on-chip boot ROM, the flash/RTC, the memory-card slots, the modem, the Broadband Adapter and a range of external development devices. The software model is a small set of registers per channel that drive a <strong>transfer</strong> (immediate or DMA) over the selected chip select at a selected clock rate.</blockquote>
+      <p>This is the register-level, emulator-focused specification for the <strong>EXI block</strong> itself. The facts are drawn from the repository's hardware documentation, the Flipper EXI RTL, the register-definition (FDL) files and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a lock, a timing edge, the exact meaning of a field — it is called out as such. A high-level overview of EXI and SI (the sibling <strong>Serial Interface</strong>) also lives in <a href="peripherals.html">peripherals.md</a>; this document is the register-accurate one and supersedes the register table there.</p>
+      <h2>1. Overview</h2>
+      <p>The EXI block is instantiated in Flipper as <code>io_Exi</code> (reached through the IO register space, IO-module <code>io_addr_exi</code>). It contains three channel sub-instances, <code>io_Exi0Ch</code>, <code>io_Exi1Ch</code> and <code>io_Exi2Ch</code>, each of which is built from the same set of sub-blocks: a control/status register (<strong>CSR</strong> or <strong>CPR</strong>), a serial transfer engine (<strong>Xfer</strong>), a DMA engine (<strong>Dma</strong>), a chip-select/clock generator (<strong>Clk</strong>), and a master state machine (<strong>SM</strong>) that decides between the three transfer types — immediate, DMA, and (for channel 0) the boot-ROM read. Channel 0 additionally instantiates the ROM state machine (<strong>ROM</strong>) and the key/descrambler state machine (<strong>Key</strong> / <strong>LFSR</strong>).</p>
+      <h3>1.1 Channels and their role</h3>
+      <table>
+        <tr><th>Channel</th><th>Base</th><th>Typical devices</th></tr>
+        <tr><td><strong>EXI0</strong></td><td><code>0x0C006800</code></td><td>Boot ROM / flash ROM, real-time clock + settings SRAM, and the high-speed external device (modem, Broadband Adapter) on the three chip selects</td></tr>
+        <tr><td><strong>EXI1</strong></td><td><code>0x0C006814</code></td><td>External serial-port device (modem etc.) — one chip select</td></tr>
+        <tr><td><strong>EXI2</strong></td><td><code>0x0C006828</code></td><td>External debug/serial device (serial port 2) — one chip select</td></tr>
+      </table>
+      <p>Channel 0 carries the most features: it is the <strong>16-bit / highest-bandwidth</strong> channel, it owns the boot-ROM <strong>descrambler</strong>, and it drives an <em>isolated internal</em> 32 MHz line as an EMI countermeasure. Channel 0 is the channel used by the Broadband Adapter and the modem. Channels 1 and 2 are plain external channels with fewer registers (they have no ROM and, for channel 2, no device-presence EXT_IN).</p>
+      <h3>1.2 Data flow</h3>
+      <p>Each channel connects to main memory through the memory interface (a 32-byte DMA path) and to a single serial device through a small set of pads. The transfer state machine picks one of three activities per channel: an <strong>immediate</strong> 1–4 byte full-duplex transfer, a <strong>DMA</strong> bulk transfer staged through a 32-byte internal FIFO, or (channel 0 only) a <strong>boot-ROM</strong> read.</p>
+      <h2>2. External pins / signals</h2>
+      <p>Each channel has a small, dedicated pad set. The names below use the RTL convention (the external-facing signal is <code>exi&#48;n&#48;…</code>; the pad group for channel 0 is the wide one, channels 1 and 2 are single-CS/single-clock slices).</p>
+      <h3>2.1 Channel 0 (wide)</h3>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Direction</th><th>Description</th></tr>
+        <tr><td><code>exi0di0</code> / <code>exi0di1</code></td><td>1</td><td>in</td><td>Serial data <strong>in</strong>, two alternate input lanes (the input is muxed by <code>cs0b</code>)</td></tr>
+        <tr><td><code>exi0do0</code> / <code>exi0do1</code></td><td>1</td><td>out</td><td>Serial data <strong>out</strong>, two copies (internal and OE-gated external)</td></tr>
+        <tr><td><code>exi0do1oe</code></td><td>1</td><td>out</td><td>Output-enable for the external <code>exi0do1</code> lane</td></tr>
+        <tr><td><code>exi0clk0</code> / <code>exi0clk1</code></td><td>1</td><td>out</td><td>EXI clock, two copies (internal always-driven <code>clk0</code>, and OE-gated external <code>clk1</code>)</td></tr>
+        <tr><td><code>exi0clk1oe</code></td><td>1</td><td>out</td><td>Output-enable for the external clock lane</td></tr>
+        <tr><td><code>exi0csb[2:0]</code></td><td>3</td><td>out</td><td>Chip select (active-low); <code>[0]</code>=external/EXT, <code>[1]</code>=ROM, <code>[2]</code>=modem/high-speed</td></tr>
+        <tr><td><code>exi0csboe[2:0]</code></td><td>3</td><td>out</td><td>Chip-select output-enables; <code>[0]</code> is OE-gated, <code>[1]</code>/<code>[2]</code> are always enabled</td></tr>
+        <tr><td><code>exi0extin</code></td><td>1</td><td>in</td><td>Device-present / EXT_IN interrupt input</td></tr>
+        <tr><td><code>exi0intb</code></td><td>1</td><td>in</td><td>Device interrupt request input</td></tr>
+      </table>
+      <p>The serial clock (<code>exi0clk1</code>) and data-out (<code>exi0do1</code>) and the external chip-select (<code>exi0csboe[0]</code>) output-enables are gated by <code>(~EXTINT &amp;&amp; exiextin)</code> — the outputs are only driven when a device is present on the line and no removal interrupt is pending. The internal <code>exi0clk0</code> / <code>exi0do0</code> lanes and the ROM (<code>csb[1]</code>) and modem (<code>csb[2]</code>) chip selects are always enabled.</p>
+      <h3>2.2 Channels 1 and 2 (narrow)</h3>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Direction</th><th>Channel</th><th>Description</th></tr>
+        <tr><td><code>exi1di</code></td><td>1</td><td>in</td><td>1</td><td>Serial data in</td></tr>
+        <tr><td><code>exi1do</code></td><td>1</td><td>out</td><td>1</td><td>Serial data out</td></tr>
+        <tr><td><code>exi1dooe</code></td><td>1</td><td>out</td><td>1</td><td>Data output-enable</td></tr>
+        <tr><td><code>exi1clk</code></td><td>1</td><td>out</td><td>1</td><td>EXI clock</td></tr>
+        <tr><td><code>exi1clkoe</code></td><td>1</td><td>out</td><td>1</td><td>Clock output-enable</td></tr>
+        <tr><td><code>exi1csb</code></td><td>1</td><td>out</td><td>1</td><td>Chip select (active-low)</td></tr>
+        <tr><td><code>exi1csboe</code></td><td>1</td><td>out</td><td>1</td><td>Chip-select output-enable</td></tr>
+        <tr><td><code>exi1extin</code></td><td>1</td><td>in</td><td>1</td><td>Device-present / EXT_IN</td></tr>
+        <tr><td><code>exi1intb</code></td><td>1</td><td>in</td><td>1</td><td>Device interrupt request</td></tr>
+        <tr><td><code>exi2di</code></td><td>1</td><td>in</td><td>2</td><td>Serial data in</td></tr>
+        <tr><td><code>exi2do</code></td><td>1</td><td>out</td><td>2</td><td>Serial data out</td></tr>
+        <tr><td><code>exi2clk</code></td><td>1</td><td>out</td><td>2</td><td>EXI clock</td></tr>
+        <tr><td><code>exi2csb</code></td><td>1</td><td>out</td><td>2</td><td>Chip select (active-low)</td></tr>
+        <tr><td><code>exi2intb</code></td><td>1</td><td>in</td><td>2</td><td>Device interrupt request</td></tr>
+      </table>
+      <p>Channel 2 has <strong>no</strong> <code>extin</code> (no device-presence/EXT_IN); channel 1 does. Both channels 1 and 2 have exactly one chip select and no ROM path.</p>
+      <p>The output-enable logic for channels 1/2 mirrors channel 0: <code>exiclkoe</code>, <code>exidooe</code> and <code>exicsboe</code> are driven as <code>(~EXTINT &amp;&amp; exiextin)</code> for the channel's EXT_IN (for channel 2 there is no EXT_IN, so the OE is effectively tied to the presence logic).</p>
+      <h2>3. Chip-selects & devices</h2>
+      <p>Each chip-select on a channel selects a single attached device. Exactly one chip select can be active at a time per channel — the CSR hardware enforces mutual exclusion among <code>cs0b</code>/<code>cs1b</code>/<code>cs2b</code>. The register bit is active-<strong>high</strong> in the register (a <code>1</code> selects the device), but the physical <code>exicsb</code> line is active-low (<code>exicsb[n] = ~csnB</code>).</p>
+      <h3>3.1 Channel 0 chip selects</h3>
+      <table>
+        <tr><th>CS register bit</th><th>Line</th><th>Device</th></tr>
+        <tr><td><code>cs0b</code> (bit 7)</td><td><code>exi0csb[0]</code></td><td>External high-speed device (modem, Broadband Adapter) — the "EXT" line, presence-detected via <code>exi0extin</code></td></tr>
+        <tr><td><code>cs1b</code> (bit 8)</td><td><code>exi0csb[1]</code></td><td>On-chip boot <strong>ROM</strong> (and the flash/RTC/SRAM device)</td></tr>
+        <tr><td><code>cs2b</code> (bit 9)</td><td><code>exi0csb[2]</code></td><td>Modem / high-speed device (the "MDM" line)</td></tr>
+      </table>
+      <p>The input lane mux is <code>exi0di = cs0b ? exi0di1 : exi0di0</code>, so the two input lanes are selected by the external chip-select state. On the boot-ROM path (<code>io_ExiROM</code>) the ROM chip-select (<code>cs1b</code>) is driven directly by the ROM state machine, which asserts it (<code>SetROMCS</code>) and for a ROM read also <strong>forces the clock to 32 MHz</strong> and clears it back to 1 MHz afterwards (<code>ClrROMCS</code>).</p>
+      <h3>3.2 Channel 1</h3>
+      <p>A single chip select (<code>cs0b</code> = bit 7 → <code>exi1csb</code>), used for an external device on serial port 1. It has an EXT_IN so the OS can detect device insertion/removal.</p>
+      <h3>3.3 Channel 2</h3>
+      <p>A single chip select (<code>cs0b</code> = bit 7 → <code>exi2csb</code>), used for the external device on serial port 2. It has no EXT_IN, so there is no insertion/removal detection — the OS uses a probe handshake (see below).</p>
+      <h3>3.4 The "probe" handshake</h3>
+      <p>Because there is no universal presence signal, the OS driver probes a device by selecting it, performing a short immediate transfer, and checking the result. The reverse-engineered system library (<code>EXIProbe</code> / <code>__EXIProbe</code>) shows this: it selects device 0, reads the device ID register via a 1-cycle immediate transfer, and uses a lock flag + a <code>0x800030c0+chan*4</code> state word to remember whether the channel has a device. Channels 0 and 1 use EXT_IN to short-circuit the probe (when a device is known present by hardware); channel 2 always relies on the probe.</p>
+      <h2>4. Transfer modes</h2>
+      <p>A transfer is started by writing the <strong>transfer-control</strong> register (<code>EXInCR</code>): set <code>tstart=1</code> (bit 0), choose <code>dma</code> (bit 1) and <code>rw</code> (bits 3:2), and (for immediate transfers) the <code>tlen</code> (bits 5:4) length. The master state machine (<code>io_ExiSM</code>) selects the mode:</p>
+      <table>
+        <tr><th>Condition</th><th>Mode</th></tr>
+        <tr><td><code>tstart &amp;&amp; dma</code></td><td><strong>DMA</strong> transfer</td></tr>
+        <tr><td><code>tstart &amp;&amp; !dma</code></td><td><strong>Immediate</strong> transfer</td></tr>
+        <tr><td>boot-ROM read (<code>PiExiROM</code> with a cache miss)</td><td><strong>ROM</strong> read (channel 0 only)</td></tr>
+      </table>
+      <p>Each mode has its own busy flag; the channel's master <code>ExiBusy</code> is the OR of them. While a transfer is in progress, the address/length/control register loads are suppressed (<code>!ExiBusy</code> gate); the chip-clock register load is also gated by <code>!ExiBusy</code>.</p>
+      <h3>4.1 Immediate transfer (1–4 bytes, full duplex)</h3>
+      <p>The immediate transfer is the command/status path. It shifts <strong>up to 4 bytes</strong> out of the <code>EXInDATA</code> register and simultaneously shifts the same number of received bytes back in. The length is given by <code>tlen</code>:</p>
+      <table>
+        <tr><th><code>tlen[1:0]</code></th><th>Length</th></tr>
+        <tr><td><code>00</code></td><td>1 byte</td></tr>
+        <tr><td><code>01</code></td><td>2 bytes</td></tr>
+        <tr><td><code>10</code></td><td>3 bytes</td></tr>
+        <tr><td><code>11</code></td><td>4 bytes</td></tr>
+      </table>
+      <p>The data register is <strong>bit 63..32</strong> of the internal 64-bit datapath (<code>ExiData[63:48]</code> high halfword, <code>ExiData[47:32]</code> low halfword). Transmission is <strong>big-endian</strong>: the serial output is <code>ExiData[63]</code>, and each byte is shifted out MSB-first. On completion the received bytes have been shifted into the same register, and the OS reads <code>EXInDATA</code> back and unpacks them (the reverse-engineered driver reads the register and extracts each byte with <code>(d &#48;&#48; ((3-i)*8)) &amp; 0xFF</code>).</p>
+      <p>For an immediate <strong>write</strong> the OS writes the source bytes into <code>EXInDATA</code> first, then the control register. For an immediate <strong>read</strong> the OS writes the control register and reads <code>EXInDATA</code> after the transfer completes. The <code>rw[1:0]</code> direction field (0 = read, 1 = write, 2 = read/write) selects the sense.</p>
+      <h3>4.2 DMA transfer</h3>
+      <p>The DMA transfer moves a block between <strong>main memory</strong> and the EXI device, staged through a <strong>32-byte</strong> (4×64-bit) internal FIFO. The <code>EXInMAR</code> register gives the 32-byte-aligned memory address and <code>EXInLEN</code> gives the length; both are auto- advanced as the DMA proceeds. See §5.</p>
+      <h3>4.3 ROM read (channel 0 only)</h3>
+      <p>A CPU read of the boot-ROM region is served by the channel-0 ROM state machine and the descrambler, not by a normal EXI device transfer. See §7.</p>
+      <h2>5. DMA</h2>
+      <h3>5.1 Registers</h3>
+      <ul>
+        <li><strong><code>EXInMAR</code></strong> (field <code>[25:5]</code>) — the 32-byte-aligned memory address. Bits 25:16 are</li>
+      </ul>
+      <p>in the high halfword, bits 15:5 in the low halfword (the low 5 bits read as 0).</p>
+      <ul>
+        <li><strong><code>EXInLEN</code></strong> (field <code>[25:5]</code>) — the transfer length. The engine transfers data in</li>
+      </ul>
+      <p><strong>32-byte lines</strong> and decrements the length as lines complete, incrementing <code>MAR</code> by 32 bytes per line.</p>
+      <h3>5.2 The 32-byte datapath</h3>
+      <p>The DMA engine is a small state machine that fills/drains a 4-entry × 64-bit FIFO and issues 32-byte memory transactions. For an <strong>EXI→memory</strong> DMA (a "read" of the device), it performs four 8-byte serial transfers into the FIFO, then commits the 32 bytes to main memory in one burst, repeating until <code>EXILEN</code> is exhausted. For a <strong>memory→EXI</strong> DMA (a "write" to the device), it reads 32 bytes from main memory into the FIFO, then emits four 8-byte serial transfers to the device.</p>
+      <h3>5.3 Flush / completion</h3>
+      <p>For a <strong>read</strong> DMA (EXI→memory), once the last line is written the engine asserts the memory write-flush and waits for the flush-acknowledge, guaranteeing that the final data is in main memory rather than sitting in a write buffer. Only then does it signal completion. For a <strong>write</strong> DMA (memory→EXI) no flush is needed, since the data came from memory.</p>
+      <h3>5.4 Completion</h3>
+      <p>When the DMA engine finishes (and the master state machine observes the DMA-busy flag drop), it <strong>sets the transfer-complete interrupt</strong> (<code>tcint</code>) and <strong>clears <code>tstart</code></strong> (bit 0 of <code>EXInCR</code>). The OS waits on <code>tstart</code> going to 0 (<code>EXISync</code> polls <code>control &amp; 1</code>).</p>
+      <h2>6. Clocking & the EXI clock lock</h2>
+      <h3>6.1 The CLK field</h3>
+      <p>Bits <strong>6:4</strong> of the CSR (<code>clk[2:0]</code>) select the per-channel EXI clock. The encoding is <strong>monotonic</strong> — the field value increases with the clock rate — and is confirmed against the RTL clock generator, which divides the EXI clock by progressively smaller factors:</p>
+      <table>
+        <tr><th><code>clk[2:0]</code></th><th>EXI clock</th></tr>
+        <tr><td><code>000</code></td><td>1 MHz</td></tr>
+        <tr><td><code>001</code></td><td>2 MHz</td></tr>
+        <tr><td><code>010</code></td><td>4 MHz</td></tr>
+        <tr><td><code>011</code></td><td>8 MHz</td></tr>
+        <tr><td><code>100</code></td><td>16 MHz</td></tr>
+        <tr><td><code>101</code></td><td>32 MHz</td></tr>
+        <tr><td><code>110</code> / <code>111</code></td><td>reserved (clock generator defaults to 1 MHz)</td></tr>
+      </table>
+      <p>This is <em>not</em> inverted: value 0 = 1 MHz (largest divider) through value 5 = 32 MHz (smallest divider). The system library confirms it — <code>EXISelect</code> writes <code>freq &#48;&#48; 4</code> with <code>freq</code> in <code>{0..5}</code> for the six rates. The clock is enabled only while a transfer is in progress (<code>ExiClkEnable == XferBusy</code>), so the line idles low between transfers.</p>
+      <h3>6.2 The 32 MHz lock (<code>SIEXILK</code>)</h3>
+      <p>The <strong>SI</strong> block's <code>SIEXILK</code> register (bit 0, write any value to the <em>unused</em> upper 31 bits) locks out the <strong>32 MHz</strong> setting. When <code>SIEXILK=1</code>, the EXI CSR ignores any write to <code>clk</code> whose value is 32 MHz (<code>EXI_CLK_32MHZ</code>), so software cannot set a channel to 32 MHz while the lock is held. The serial interface shares the same clock tree as EXI, which is why the SI block owns this. (From per the SI register documentation: <code>0</code> = EXI clocks unlocked, 32 MHz permitted; <code>1</code> = locked, 32 MHz not permitted.)</p>
+      <h3>6.3 Channel-0 dual clock / isolation</h3>
+      <p>Channel 0 drives <strong>two</strong> copies of the EXI clock: an internal <code>exi0clk0</code> that is always driven, and an external <code>exi0clk1</code> whose output-enable is gated by device presence. This is the electro-magnetic-interference countermeasure described at the block level: an isolated internal 32 MHz line is kept separate from the (slower, OE-gated) external line. Both copies carry the same <code>ExiClk</code> waveform.</p>
+      <h2>7. Boot ROM & descrambler</h2>
+      <p>The boot ROM is exposed as an EXI<strong>0</strong> device on chip-select <code>cs1b</code>. When the CPU reads the boot-ROM region, the channel-0 ROM state machine (<code>io_ExiROM</code>) takes over and performs the read on the EXI0 serial bus, then un-scrambles the data before returning it to the Processor Interface.</p>
+      <h3>7.1 ROM read path</h3>
+      <ul>
+        <li>The ROM access is addressed by the PI address bits <code>[19:3]</code> (17 bits). The engine</li>
+      </ul>
+      <p>holds a small <strong>cache</strong> of one 8-byte line, tagged with <code>PiAddr[19:3]</code>.</p>
+      <ul>
+        <li>On a cache hit (<code>ExiPiROMRdy</code>), the ROM access is served immediately and no</li>
+      </ul>
+      <p>serial transfer is started.</p>
+      <ul>
+        <li>On a miss, the state machine asserts the ROM chip-select (<code>cs1b</code>), waits the</li>
+      </ul>
+      <p><code>cs0</code>→<code>clk↑</code> address-settle delay, sends a <strong>4-byte command</strong> on the serial bus (a 32-bit ROM-read opcode + address), then reads <strong>8 bytes</strong> back, de-scrambles the inbound stream with the key, caches the line, de-asserts the chip-select and signals ready.</p>
+      <ul>
+        <li>The ROM command is a 32-bit field: 6-bit read opcode, 17-bit address, and 9 dummy</li>
+      </ul>
+      <p>bits (one <code>0</code> for the address bit 2 slot plus 8 dummy data bits). The command uses a 4-byte (<code>tlen=3</code>) transfer; the data uses an 8-byte transfer.</p>
+      <p>The ROM state machine also controls the chip-select/clock through the CSR: asserting the ROM chip-select forces <code>cs1b=1</code> and <code>clk=32 MHz</code>, and clearing it returns both to the deselected/1 MHz defaults.</p>
+      <h3>7.2 ROM disable (<code>romdis</code>)</h3>
+      <p>Bit <strong>13</strong> of the channel-0 CSR (<code>romdis</code>) disables the boot ROM and descrambler. When <code>romdis=1</code>:</p>
+      <ul>
+        <li>ROM reads return <code>0xFFFF</code> for every halfword (<code>ExiROMData = 16'hFFFF</code>);</li>
+        <li><code>ExiPiROMRdy</code> is forced high (the ROM access is always "ready" and never starts a</li>
+      </ul>
+      <p>serial transfer);</p>
+      <ul>
+        <li>the descrambler key is forced to the identity value (<code>Key=0</code>).</li>
+      </ul>
+      <p>The reset value of <code>romdis</code> is <strong>0</strong> (ROM enabled), so the boot path works at power on. The CSR only allows <em>disabling</em> the ROM (writing a <code>1</code>); writing <code>0</code> is ignored and the ROM cannot be re-enabled once disabled. This matches the OS behaviour, which disables the ROM after boot.</p>
+      <h3>7.3 The descrambler</h3>
+      <p>The boot ROM is encrypted/descrambled in hardware. For channel 0, the inbound serial bit stream is XORed with a running <strong>key</strong> bit. The key is generated by a 3-stage <strong>16-bit LFSR</strong> cascade (each stage uses the "one-to-many" Galois form with a fixed tap polynomial and a fixed seed). The LFSRs step once per 8-byte transfer on the <strong>negative</strong> edge of the EXI clock, and only when the transfer is a ROM read or a DMA (8-byte length) and the ROM is not disabled. The three LFSR outputs are XOR-cascaded to form the key; the key is <code>0</code> (identity — no descrambling) when either <code>romdis</code> is set or the <code>KeyEnable</code> "chicken bit" is clear. The seed and tap constants are fixed in the RTL and are what an emulator must implement to reproduce the boot-ROM stream exactly. Channels 1 and 2 use the identity key (<code>Key=0</code>) and have no ROM path.</p>
+      <h2>8. Interrupts & device presence</h2>
+      <h3>8.1 Per-channel interrupt sources</h3>
+      <p>Each channel has three interrupt <strong>status</strong> bits and three <strong>mask</strong> bits in its CSR. A status bit is set by hardware and cleared by writing a <code>1</code> to it (write-1-to-clear); a mask bit is a plain read/write load. The per-channel interrupt line is the masked OR of the three sources:</p>
+      <table>
+        <tr><th>CSR bit</th><th>Status field</th><th>Mask field</th><th>Source</th></tr>
+        <tr><td>0 / 1</td><td><code>exiint</code></td><td><code>exiintmsk</code></td><td>Device <strong>interrupt</strong> — a falling edge on the device's <code>intb</code> line</td></tr>
+        <tr><td>2 / 3</td><td><code>tcint</code></td><td><code>tcintmsk</code></td><td><strong>Transfer complete</strong> — set when an immediate or DMA transfer finishes</td></tr>
+        <tr><td>10 / 11</td><td><code>extint</code></td><td><code>extintmsk</code></td><td><strong>Device presence</strong> — a falling edge on the <code>extin</code> line (device removed)</td></tr>
+      </table>
+      <p><code>tcint</code> is set by the transfer state machine when a DMA or immediate transfer completes. <code>exiint</code> and <code>extint</code> are edge-latched by the CSR from the synchronised <code>intb</code> / <code>extin</code> lines (a falling edge sets the bit). Writing a <code>1</code> to the status bit clears it; the mask bit gates whether it contributes to the channel interrupt.</p>
+      <h3>8.2 Per-channel OR and the PI <code>EXINT</code></h3>
+      <p>Each channel's interrupt line is</p>
+      <pre><code>ExiInt = (extint &amp;&amp; extintmsk) || (tcint &amp;&amp; tcintmsk) || (exiint &amp;&amp; exiintmsk)</code></pre>
+      <p>All three channels' lines are OR-ed together into a single <code>exi_piInt</code> signal, which is registered and presented to the <strong>PI</strong> interrupt controller as its <code>EXINT</code> source. In the PI cause/mask registers (<code>INTSR</code> / <code>INTMSK</code>) this is <strong>bit 4</strong> (<code>EXINT</code> / <code>EXMSK</code>). The PI is then the single line that reaches the CPU — software must read the per-channel CSR to determine which channel and which source fired.</p>
+      <h3>8.3 Which channels have which source</h3>
+      <table>
+        <tr><th>Channel</th><th><code>exiint</code></th><th><code>tcint</code></th><th><code>extint</code> / <code>ext</code></th></tr>
+        <tr><td>EXI0</td><td>yes</td><td>yes</td><td>yes (with <code>ext</code> level)</td></tr>
+        <tr><td>EXI1</td><td>yes</td><td>yes</td><td>yes (with <code>ext</code> level)</td></tr>
+        <tr><td>EXI2</td><td>yes</td><td>yes</td><td><strong>no</strong> (no <code>extin</code>)</td></tr>
+      </table>
+      <p>Channel 0 also has an <code>ext</code> (bit 12) status that mirrors the synchronised <code>extin</code> level (a <code>1</code> = device present), used by the probe logic. Channel 1 has <code>ext</code>, the <code>ext</code> level and its <code>extint</code>; channel 2 has neither <code>ext</code> nor <code>extint</code>.</p>
+      <h3>8.4 Device insertion / removal</h3>
+      <p>The <code>extin</code> line detects device presence. The CSR synchronises it, stores the level in <code>ext</code>, and sets <code>extint</code> on the falling edge (device removal). Because <code>extin</code> and <code>intb</code> are asynchronous to the EXI clock, they are run through a synchroniser and the edge detector requires a settling delay before looking for the falling edge — a device being removed while a transfer is in flight will not immediately produce a spurious interrupt.</p>
+      <h2>9. Register access</h2>
+      <p>All Flipper IO registers, including the EXI block, are reached through the Processor Interface's <strong>16-bit</strong> register bus (<code>PiData[15:0]</code>, halfword-granular <code>PiAddr[19:1]</code>). There is no 32-bit register port; PI always breaks a 32-bit access into two 16-bit transfers and is <strong>big-endian</strong>: the <strong>high</strong> halfword is at the base (even) address and the <strong>low</strong> halfword at <code>base+2</code>. The register decode uses <code>PiAddr[5:2]</code> to select the register index within a channel, and <code>PiAddr[1]</code> to select the halfword. A register is 32-bit internally; only 2-byte and 4-byte accesses are valid in the register space (any other size is a PI error).</p>
+      <p>For the EXI registers, only specific halfwords are loaded on write and specific halfwords are meaningful on read (the CSR and transfer-control register are essentially the low halfword; the address/length/data registers use both halves).</p>
+      <h2>10. Register map</h2>
+      <p>Channel n base = <code>0x0C006800 + n*0x14</code> (uncached alias <code>0xCC006800 + n*0x14</code>): EXI0 <code>0x0C006800</code>, EXI1 <code>0x0C006814</code>, EXI2 <code>0x0C006828</code>. Each channel has the same five registers at the same offsets. All are <strong>32-bit</strong> internally; the table shows the byte offset from the channel base.</p>
+      <table>
+        <tr><th>Offset</th><th>Name</th><th>R/W</th><th>Purpose</th></tr>
+        <tr><td><code>0x00</code></td><td><code>EXInCPR</code></td><td>R/W</td><td>Control/status: interrupt flags + masks, clock select, chip select, EXT, ROM-disable</td></tr>
+        <tr><td><code>0x04</code></td><td><code>EXInMAR</code></td><td>R/W</td><td>DMA memory address (field <code>[25:5]</code>)</td></tr>
+        <tr><td><code>0x08</code></td><td><code>EXInLEN</code></td><td>R/W</td><td>DMA transfer length (field <code>[25:5]</code>)</td></tr>
+        <tr><td><code>0x0C</code></td><td><code>EXInCR</code></td><td>R/W</td><td>Transfer control: <code>tstart</code>, <code>dma</code>, <code>rw</code>, <code>tlen</code></td></tr>
+        <tr><td><code>0x10</code></td><td><code>EXInDATA</code></td><td>R/W</td><td>Immediate data (bits 63:32 of the 64-bit datapath)</td></tr>
+      </table>
+      <blockquote><strong>Note — register order.</strong> The existing high-level overview <a href="peripherals.html">peripherals.md</a> lists the EXI registers in a different order (<code>STAT</code>, <code>DATA</code>, <code>CTRL</code>, <code>MAR</code>, <code>LEN</code>). That is <strong>incorrect</strong>. The RTL and the system-library driver both use the order above: <strong>CPR / MAR / LEN / CR / DATA</strong> at <code>+0x00 / +0x04 / +0x08 / +0x0C / +0x10</code>. The RTL wins; the register-address layout is <code>CPR, MAR, LENGTH, CR, DATA</code>, and the immediate data register is at <strong><code>+0x10</code></strong>, not <code>+0x04</code>.</blockquote>
+      <p>Register indices used by the RTL/OS: EXI0 = indices 0–4, EXI1 = 5–9, EXI2 = 10–14 (<code>EXI1CPR</code> is at index 5, <code>EXI2CPR</code> at index 10), so channel n base = <code>n*5</code> registers.</p>
+      <h2>11. Register fields</h2>
+      <h3>11.1 <code>EXInCPR</code> (control/status, <code>+0x00</code>)</h3>
+      <p>Reads back the low halfword as <code>{2'b0, ExiCpr[13:0]}</code>; the high halfword reads as <code>0</code>. Bits are LSB-first.</p>
+      <p><strong>All channels (EXI0/EXI1/EXI2):</strong></p>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>exiintmsk</code></td><td>R/W</td><td><code>0</code> (masked)</td><td>Enable the device-interrupt source</td></tr>
+        <tr><td>1</td><td><code>exiint</code></td><td>R/W1C</td><td><code>0</code></td><td>Device interrupt status (set on <code>intb</code> falling edge)</td></tr>
+        <tr><td>2</td><td><code>tcintmsk</code></td><td>R/W</td><td><code>0</code> (masked)</td><td>Enable the transfer-complete source</td></tr>
+        <tr><td>3</td><td><code>tcint</code></td><td>R/W1C</td><td><code>0</code></td><td>Transfer-complete status</td></tr>
+        <tr><td>6:4</td><td><code>clk</code></td><td>R/W</td><td><code>0</code> (1 MHz)</td><td>EXI clock select (see §6.1); 32 MHz honoured only if not <code>SIEXILK</code>-locked</td></tr>
+        <tr><td>7</td><td><code>cs0b</code></td><td>R/W</td><td><code>0</code> (deselected)</td><td>Chip select 0 (active-high in register, active-low on the pin)</td></tr>
+      </table>
+      <p><strong>EXI0 only:</strong></p>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>8</td><td><code>cs1b</code></td><td>R/W</td><td><code>0</code></td><td>Chip select 1 (ROM)</td></tr>
+        <tr><td>9</td><td><code>cs2b</code></td><td>R/W</td><td><code>0</code></td><td>Chip select 2 (modem / high-speed)</td></tr>
+        <tr><td>10</td><td><code>extintmsk</code></td><td>R/W</td><td><code>0</code> (masked)</td><td>Enable the device-presence source</td></tr>
+        <tr><td>11</td><td><code>extint</code></td><td>R/W1C</td><td><code>1</code></td><td>Device-presence interrupt status (set on <code>extin</code> falling edge; resets to pending-but-masked)</td></tr>
+        <tr><td>12</td><td><code>ext</code></td><td>RO</td><td>synced <code>extin</code></td><td>Current device-present level (1 = present)</td></tr>
+        <tr><td>13</td><td><code>romdis</code></td><td>R/W</td><td><code>0</code> (ROM enabled)</td><td>Disable the boot ROM & descrambler</td></tr>
+      </table>
+      <p><strong>EXI1 only:</strong></p>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>8:9</td><td>—</td><td>—</td><td><code>0</code></td><td>Reserved (pad)</td></tr>
+        <tr><td>10</td><td><code>extintmsk</code></td><td>R/W</td><td><code>0</code> (masked)</td><td>Enable the device-presence source</td></tr>
+        <tr><td>11</td><td><code>extint</code></td><td>R/W1C</td><td><code>1</code></td><td>Device-presence interrupt status</td></tr>
+        <tr><td>12</td><td><code>ext</code></td><td>RO</td><td>synced <code>extin</code></td><td>Current device-present level</td></tr>
+        <tr><td>13</td><td>—</td><td>—</td><td><code>0</code></td><td>Reserved (pad — no ROM)</td></tr>
+      </table>
+      <p><strong>EXI2 only:</strong></p>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>13:8</td><td>—</td><td>—</td><td><code>0</code></td><td>Reserved (pad — no <code>cs1b</code>/<code>cs2b</code>, no EXT, no ROM)</td></tr>
+      </table>
+      <p>Notes on the CSR semantics (from the RTL):</p>
+      <ul>
+        <li><strong><code>extint</code> resets to 1</strong> (pending) while its mask <code>extintmsk</code> resets to 0 (masked),</li>
+      </ul>
+      <p>so no interrupt is delivered at power-on; software clears it during initialisation.</p>
+      <ul>
+        <li>The chip selects are <strong>mutually exclusive</strong> — the CSR refuses to set <code>csnb</code> if any</li>
+      </ul>
+      <p>other chip select is (or is being set at the same time).</p>
+      <ul>
+        <li>The <code>clk</code> load is suppressed while the channel is busy and while the 32 MHz write</li>
+      </ul>
+      <p>is locked; the ROM state machine forces <code>clk=32 MHz</code> during a ROM read.</p>
+      <ul>
+        <li><code>romdis</code> is write-only-to-disable: writing <code>1</code> disables the ROM, writing <code>0</code> is</li>
+      </ul>
+      <p>ignored.</p>
+      <h3>11.2 <code>EXInMAR</code> (DMA address, <code>+0x04</code>)</h3>
+      <p>Field <code>[25:5]</code> = 32-byte-aligned memory address. Read high halfword <code>= {6'b0, MAR[25:16]}</code>, low halfword <code>= {MAR[15:5], 5'b0}</code>. Written high halfword <code>= MAR[25:16]</code> from <code>PiData[9:0]</code>, low halfword <code>= MAR[15:5]</code> from <code>PiData[15:5]</code>. Bounds <code>DmaBusy</code> (the value is not loaded while a DMA is running). Reset <code>0</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>25:5</td><td><code>MAR</code></td><td>32-byte-aligned DMA memory address</td><td><code>0</code></td></tr>
+        <tr><td>4:0, 31:26</td><td>—</td><td>Reserved (zero)</td><td><code>0</code></td></tr>
+      </table>
+      <h3>11.3 <code>EXInLEN</code> (DMA length, <code>+0x08</code>)</h3>
+      <p>Field <code>[25:5]</code>. Read/written the same split as <code>EXInMAR</code>. The engine counts down the length once per 32-byte line and increments <code>MAR</code> by 32 per line. Bounds <code>DmaBusy</code>. Reset <code>0</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>25:5</td><td><code>LEN</code></td><td>DMA length (decremented per 32-byte line)</td><td><code>0</code></td></tr>
+        <tr><td>4:0, 31:26</td><td>—</td><td>Reserved (zero)</td><td><code>0</code></td></tr>
+      </table>
+      <h3>11.4 <code>EXInCR</code> (transfer control, <code>+0x0C</code>)</h3>
+      <p>Reads back the low halfword as <code>{10'b0, CR[5:0]}</code>; the high halfword reads as <code>0</code>. Bits are LSB-first.</p>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>tstart</code></td><td>R/W</td><td><code>0</code> (done)</td><td>Write <code>1</code> to start a transfer; hardware clears it on completion</td></tr>
+        <tr><td>1</td><td><code>dma</code></td><td>R/W</td><td><code>0</code> (immediate)</td><td>0 = immediate transfer, 1 = DMA transfer</td></tr>
+        <tr><td>3:2</td><td><code>rw</code></td><td>R/W</td><td><code>0</code> (read)</td><td>0 = read, 1 = write, 2 = read-write</td></tr>
+        <tr><td>5:4</td><td><code>tlen</code></td><td>R/W</td><td><code>0</code> (1 byte)</td><td>Immediate transfer length: 0=1B, 1=2B, 2=3B, 3=4B</td></tr>
+      </table>
+      <p><code>tstart</code> is started by writing <code>1</code> and cleared automatically when the transfer completes (immediate or DMA). <code>tlen</code> only affects immediate transfers (DMA always moves 8 bytes at a time). The <code>rw</code> direction for a DMA is read/write; the read-write (<code>2</code>) sense is only meaningful for immediate transfers.</p>
+      <h3>11.5 <code>EXInDATA</code> (immediate data, <code>+0x10</code>)</h3>
+      <p>Maps to the <strong>upper 32 bits</strong> of the internal 64-bit datapath: high halfword = <code>ExiData[63:48]</code>, low halfword = <code>ExiData[47:32]</code>. Reset <code>0</code>. During a transfer the register shifts (a complete transfer shifts out and shifts in the full selected byte count); after an immediate read the received bytes are in this register. For a DMA or ROM transfer the full 64-bit datapath carries 8 bytes.</p>
+      <h2>12. Emulator notes</h2>
+      <ol>
+        <li><strong>Register width / word order.</strong> Model each EXI register as a 32-bit value</li>
+      </ol>
+      <p>reached via two 16-bit halfwords, big-endian (high at the base, low at <code>+2</code>). The CSR (<code>EXInCPR</code>) and <code>EXInCR</code> are written/read as the low halfword only; the address/length/data registers use both halves. Only 2- and 4-byte accesses are valid.</p>
+      <ol>
+        <li><strong>Register offsets.</strong> Use the RTL order: <code>CPR</code> <code>+0x00</code>, <code>MAR</code> <code>+0x04</code>, <code>LEN</code></li>
+      </ol>
+      <p><code>+0x08</code>, <code>CR</code> <code>+0x0C</code>, <code>DATA</code> <code>+0x10</code>. This differs from the register table in <a href="peripherals.html">peripherals.md</a>, whose order is wrong.</p>
+      <ol>
+        <li><strong>Chip-select & clock.</strong> Bits 7/8/9 select <code>cs0b</code>/<code>cs1b</code>/<code>cs2b</code> (only on EXI0);</li>
+      </ol>
+      <p>channel 1 and 2 use bit 7 only. They are mutually exclusive. Bits 6:4 select the clock, using 0=1 MHz … 5=32 MHz (not inverted). Honor the <code>SIEXILK</code> lock so a 32 MHz write is ignored while locked.</p>
+      <ol>
+        <li><strong>Transfer start / completion.</strong> Write <code>EXInCR</code> with <code>tstart=1</code> (bit 0) to start.</li>
+      </ol>
+      <p>For a DMA also set <code>dma</code> (bit 1); for an immediate transfer set <code>tlen</code> (bits 5:4) and <code>rw</code> (bits 3:2). <code>tstart</code> clears automatically and <code>tcint</code> (bit 3) is set on completion; software typically polls <code>tstart==0</code> rather than using <code>tcint</code>.</p>
+      <ol>
+        <li><strong>Immediate transfer.</strong> The data register is bits 63:32 of a 64-bit shift</li>
+      </ol>
+      <p>register, shifted MSB-first (bit 63 out). A write loads the source bytes into <code>EXInDATA</code> before starting; a read retrieves the received bytes from <code>EXInDATA</code> after it completes. Transfer is full-duplex for the selected length.</p>
+      <ol>
+        <li><strong>DMA.</strong> The engine moves 32-byte lines between main memory (<code>EXInMAR</code>,</li>
+      </ol>
+      <p>auto-incrementing by 32) and the device, staged through a 32-byte FIFO. <code>EXInLEN</code> decrements per line. For a read DMA (device→memory) flush the write buffer before signalling completion — this is the coherency requirement that the data is actually in RAM.</p>
+      <ol>
+        <li><strong>ROM path (EXI0 only).</strong> A CPU read of the boot-ROM region starts an internal</li>
+      </ol>
+      <p>ROM read that asserts <code>cs1b</code>, forces the clock to 32 MHz, sends a 4-byte command and reads 8 bytes back. Cache the last line (keyed on <code>PiAddr[19:3]</code>); serve a hit without a serial transfer. When <code>romdis</code> (bit 13) is set, return <code>0xFFFF</code> and never start a transfer.</p>
+      <ol>
+        <li><strong>Descrambler.</strong> For the boot ROM, XOR the inbound serial stream with the key bit.</li>
+      </ol>
+      <p>The key is a 3-stage 16-bit LFSR cascade that steps on the negative EXI-clock edge during 8-byte (ROM/DMA) transfers, with the reseed/tap constants fixed in the RTL. <code>Key</code> is forced to 0 (identity) when <code>romdis</code> is set or the <code>KeyEnable</code> chicken bit is clear. Channels 1/2 always use the identity key.</p>
+      <ol>
+        <li><strong>Interrupts.</strong> Maintain per-channel <code>exiint</code>/<code>tcint</code>/<code>extint</code> status bits</li>
+      </ol>
+      <p>(write-1-to-clear) and their masks. <code>exiint</code> and <code>extint</code> are set on a falling edge of <code>intb</code>/<code>extin</code>; <code>tcint</code> is set on transfer completion. <code>extint</code> resets to 1 but is masked. OR each channel's 3 masked sources, then OR all three channels into the PI <code>EXINT</code> bit (bit 4 of <code>INTSR</code>/<code>INTMSK</code>).</p>
+      <ol>
+        <li><strong>Device presence / probe.</strong> <code>ext</code> (bit 12, EXI0/EXI1) mirrors the synchronised</li>
+      </ol>
+      <p><code>extin</code> level. The OS probes a device with a short immediate transfer; model this as returning the device's configured/attached status. Channel 2 has no <code>extin</code>.</p>
+      <h2>13. References</h2>
+      <ul>
+        <li><code>specs/architecture/peripherals.md</code> — the high-level EXI/SI overview (its EXI</li>
+      </ul>
+      <p>register table is superseded by this document; see §10).</p>
+      <ul>
+        <li><code>HW/IO/Memory.txt</code> — the <code>0x0C006800</code> / <code>0xCC006800</code> IO-space address for the</li>
+      </ul>
+      <p>external interface.</p>
+      <ul>
+        <li><code>HW/IO/ProcessorInterface.md</code> — the PI <code>INTSR</code>/<code>INTMSK</code> <code>EXINT</code> bit (bit 4).</li>
+        <li><code>HW/IO/si.htm</code> — the <code>SIEXILK</code> register that locks the EXI 32 MHz clock.</li>
+        <li><code>HW/Flipper_ASIC_Block_Diagram.png</code> — the EXI block within Flipper and the IO</li>
+      </ul>
+      <p>space map.</p>
+      <ul>
+        <li><code>RE/OS/osexi.txt</code> — the system-library EXI driver (<code>EXIProbe</code>, <code>EXISelect</code>,</li>
+      </ul>
+      <p><code>EXILock</code>, <code>EXIDma</code>, <code>EXIImm</code>, <code>EXISync</code>, <code>EXIClearInterrupts</code>), which confirms the register offsets, the chip-select/clock bit positions and the write-1-to-clear interrupt semantics.</p>
+      <ul>
+        <li><code>RE/OS/osexiad16.txt</code> — the "AD16" EXI device on channel 2 (immediate-transfer</li>
+      </ul>
+      <p>command/status protocol).</p>
+      <ul>
+        <li><code>RE/EXI/exi.c</code> — a compact EXI driver (select/deselect, immediate read/write,</li>
+      </ul>
+      <p><code>EXISync</code> and its big-endian byte unpacking).</p>
+      <ul>
+        <li><strong>US Patent 6,609,977</strong> (External Interfaces) — the Flipper external-interface and</li>
+      </ul>
+      <p>register model.</p>
+      <ul>
+        <li>The internal EXI interface specification — the authoritative channel, chip-select,</li>
+      </ul>
+      <p>clock-rate, transfer-mode and register detail summarised here.</p>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

@@ -99,24 +99,39 @@ copies and fast clear routines behave as they do (see
 address-only and cache-coherency operations that do not apply to a single-CPU
 system; only the following are meaningful to Flipper:
 
-| `TT` | Name | Meaning |
+| `TT` | 60x name | Flipper action |
 |---|---|---|
-| `00010` | single-beat write | One write to memory / IO / EFB |
-| `00110` | burst write | 32-byte write (cache line, write-gather flush) |
+| `01000` | sync | Ordering barrier — CPU writes are flushed (see §2.5) |
+| `10000` | eieio | Ordering barrier — writes are flushed (see §2.5) |
+| `00000` | clean block | Address-only; `AACK` only, no data |
+| `00100` | flush block | Address-only; `AACK` only, no data |
+| `01100` | kill block | Address-only; `AACK` only, no data |
+| `11000` | TLB invalidate | Address-only; `AACK` only, no data |
+| `00001` | lwarx reservation set | Address-only; `AACK` only, no data |
+| `01001` | tlbsync | Address-only; `AACK` only, no data |
+| `01101` | icbi | Address-only; `AACK` only, no data |
+| `00010` | single-beat write (write-with-flush) | One write to memory / IO / EFB |
+| `00110` | burst write (write-with-kill) | 32-byte write (cache line, write-gather flush) |
 | `01010` | single-beat read | One read from memory / IO / EFB / ROM |
 | `01110` | burst read | 32-byte read (cache fill) |
-| `01000` | sync | Barrier (see §2.5) |
-| `10000` | eieio | Ordering barrier (see §2.5) |
-| `01011` | prefetch hint | Prefetch the next memory line (see §2.4) |
-| `10010` / `11010` / `11110` | atomic single/burst/forward | Address-only "atomic" controls (no data) |
-| `10100` / `11100` | single/burst with EC | Cache-control encodings (no data) |
+| `01011` | burst read with prefetch | Fetch the line and prefetch the next (see §2.4) |
+| `10010` | single-beat write (write-with-flush-atomic) | One write (a normal single-beat write) |
+| `11010` | single-beat read (read-atomic) | One read (a normal single-beat read) |
+| `11110` | burst read (read-intent-to-modify-atomic) | 32-byte read (a normal burst read) |
+| `10100` | external control word write | One write (via `ecowx`) |
+| `11100` | external control word read | One read (via `eciwx`) |
 
-The remaining address-only codes (`00100`, `01100`, `11000`, `00001`, `01001`,
-`01101`) are accepted as ordering/control operations and move no data. All
-atomic/address-only and cache-coherency variants are effectively **not
-implemented** in the single-CPU Flipper system: there is no snooping or
-coherency between the CPU and any other master. PI only acts on data
-read/write, the two barriers, and the prefetch hint.
+The address-only codes above move no data — PI accepts them, returns `AACK`,
+and does nothing else. The **atomic** and **external-control-word** variants are
+treated as **ordinary** data transfers: the atomic read/write codes behave
+identically to the corresponding single-beat or burst access (there is no
+reservation or snooping in a single-CPU system), and the `ecowx`/`eciwx`
+external-control-word instructions are handled as a normal single-beat
+read/write. `ecowx`/`eciwx` are enabled through the Gekko **EAR** register,
+which is also where `TBST`/`TSIZ` are programmed; the transfer must be set to a
+non-burst, 4-byte size or the access is invalid. In practice the CPU only ever
+presents data read/write, the two barriers, and the prefetch hint, so PI's
+useful action reduces to those four.
 
 ### 2.3 Burst vs single-beat data movement
 
@@ -281,9 +296,10 @@ any masked source is pending, `INT` is asserted low).
 | 9 | `PEINT0` | `PEMSK0` | Pixel engine 0 |
 | 10 | `PEINT1` | `PEMSK1` | Pixel engine 1 |
 | 11 | `CPINT` | `CPMSK` | Command processor |
-| 12 | `DBGINT` | `DBGMSK` | Debug (JTAG / development) |
-| 13 | `SDINT` | `SDMSK` | Security / decode |
-| 15:14 | — | — | Reserved |
+| 12 | `DBGINT` | `DBGMSK` | Debug interrupt — external `dbgintb` pin, set on its falling edge |
+| 13 | `SDINT` | `SDMSK` | SDRAM interrupt — external `sdintb` pin, set on its falling edge |
+| 14 | `ACRINT` | `ACRMSK` | AHB/subsystem interrupt (only meaningful when expanded address mode is enabled) |
+| 15 | — | — | Reserved |
 | 16 | `RSTVAL` | — | Reset value / status (read-only) |
 | 31:17 | — | — | Reserved |
 
@@ -293,23 +309,35 @@ currently pressed or released.
 
 ### 4.2 Masking and the `INT` line
 
-`INTMSK` is write-only for the mask bits (it also duplicates the `INTSR` bit
-position for each source). Both `INTSR` and `INTMSK` **reset to zero**: no
-interrupt is pending and every interrupt is masked, so a freshly-powered Flipper
-raises no `INT`.
+The sources fall into two groups with different servicing rules:
 
-`INT` is the OR of `(INTMSK & pending source)`. Because there is a single line,
-the OS keeps a master handler that reads `INTSR`, and dispatches. `INT` is
-cleared when the pending source is cleared (the source block clears its own
-status) and, for the PI-specific sources, when software writes back to `INTSR`
-(§4.3, §4.4).
+- **PIINT** (`INTSR[0]`) and **RSWINT** (`INTSR[1]`) are owned by PI. Each has a
+  (Status, Mask) pair in PI, and the Status bit is **write-1-to-clear**.
+- The **module** sources (CP, PE, VI, MEM, DSP, IO, and the pin-based
+  `DBGINT`/`SDINT`/`ACRINT`) have a **read-only** Status bit in PI, and each has a
+  **two-level** mask — one mask bit in PI and a separate mask in the source
+  module. The clear bit lives **inside the source module**; writing it clears the
+  Status bit both in the module and in PI (it is not cleared by writing `INTSR`).
+
+For a particular source an interrupt is generated only if its Status **and**
+local module mask are both set; it is forwarded to the CPU only if that source
+is not masked in PI. If a Status bit is set but masked, no interrupt is raised,
+though the CPU can still poll the Status bit to see the pending source.
+
+Both `INTSR` and `INTMSK` **reset to zero**, so a freshly-powered Flipper raises
+no `INT`. All interrupts entering PI are **active-high**; the single `INT` line
+to the CPU is **active-low**. Because there is one line, the OS keeps a master
+handler that reads `INTSR`, masks it, and dispatches.
 
 ### 4.3 Clearing `INTSR`
 
-`INTSR` is **read/write**. Writing a `1` to a bit in `INTSR` **clears** that
-interrupt (the standard PowerPC "write 1 to clear" convention). Software writes
-back the bit positions it has serviced. Writes to the read-only `RSTVAL` bit are
-ignored.
+`INTSR` is read/write, but only `SDINT`, `DBGINT`, `RSWINT` and `PIINT` are
+cleared by writing a `1` to their bit in `INTSR` (the standard "write 1 to
+clear" convention; writing `0` has no effect). Writing to the module bits
+(`CPINT`, `PEINT0/1`, `VIINT`, `MEMINT`, `DSPINT`, `AIINT`, `EXIINT`, `SIINT`,
+`DIINT`) has **no effect** — those Status bits are cleared only by the source
+module's own clear register, which also clears the PI Status bit. Writes to the
+read-only `RSTVAL` bit are ignored.
 
 ### 4.4 The PI error interrupt
 
@@ -419,9 +447,15 @@ control it:
 | `CPWRT` | `0x14` | Write pointer (current address); bit 26 = `WRAP` flag |
 | `CPABT` | `0x18` | Abort — writing 1 forces a hardware abort/GFX reset |
 
-The write pointer (`CPWRT`) advances by 32 per written burst, wraps to `CPBAS`
-when it equals `CPTOP`, and sets the `WRAP` flag bit. `CPABT` forces the GFX into
-a reset state (`gfxrstb`) unconditionally when set.
+The write pointer (`CPWRT`) advances by 32 per written burst; when it reaches
+`CPTOP - 32` and is incremented it wraps to `CPBAS`, and it sets the `WRAP` flag
+bit. `WRAP` is cleared by any write to `CPWRT`, regardless of the data value.
+`CPABT` forces the GFX into a reset state (`gfxrstb`) unconditionally when set.
+
+The `CPBAS`/`CPTOP`/`CPWRT` address fields are `[25:5]` (a 32-byte-unit address)
+in the normal (compatible) address mode; in expanded address mode their full
+`[28:5]` range is exposed, though in practice the FIFO should be kept in the
+lower 48MB ("Napa") memory region, with the upper `[28:26]` bits left `0`.
 
 ## 7. Resets
 
@@ -444,16 +478,29 @@ The `CONFIG` register at `0x0C00_3024` is the reset control. Bits:
 | 2 | `DIRSTB` | Write `0` to reset the disc interface; write `1` to release |
 | 31:3 | `PICFG` | Reserved / configuration |
 
-`SYSRSTB` behaves as a **pulse**: writing `0` asserts reset, starts an internal
-down-counter loaded from **`DURAR`**, and when the counter reaches zero the reset
-is released automatically. Asserting `SYSRSTB` also asserts `MEMRSTB` and
-`DIRSTB`. Writing `1` to `CONFIG[0]` releases the reset early.
+`SYSRSTB` behaves as a **pulse**: writing `0` asserts the reset and starts an
+internal **up-counter** from 0; when it reaches the value in **`PIRDR`** the
+system reset is released automatically. Asserting `SYSRSTB` also asserts
+`MEMRSTB` and `DIRSTB` (so DI and the memory interface are reset with the
+system). Writing `1` to `CONFIG[0]` releases the system reset early.
 
-`DURAR` (`0x0C00_3028`) sets the reset duration in CPU cycles; its reset value is
-`0x1FF` (511 cycles). Setting a large value keeps the reset asserted for longer.
+There are therefore **three** software-initiated resets — whole system, DI only,
+and memory only — all driven by bits in `CONFIG`. Software reset does not modify
+`PIRDR`: its value is set on power-on reset and left untouched by a warm reset.
+
+`PIRDR` (`0x0C00_3028`, `[9:0]`) selects the reset duration in CPU cycles; its
+power-on reset value is `0x1FF` (511 cycles). Setting a larger value keeps the
+system reset asserted longer. `PIRDR` is initialised on **cold** (power-on) reset
+but is **not** re-initialised on a warm (software) reset.
 
 `MEMRSTB` and `DIRSTB` are **read/write** (their state is readable via `CONFIG`);
-`SYSRSTB` is **write-only** and reads back as `0`.
+`SYSRSTB` is **write-only** and reads back as `0`. `CONFIG` is initialised on a
+cold reset only. After power-on the memory interface is released automatically
+shortly after reset deasserts, while the disc interface is left asserted until
+the boot code writes `CONFIG` to release it; once the system reset is deasserted
+by Flipper, DI and memory can only be released by software. On reset deassertion
+Flipper comes out of reset a few cycles before the CPU, so it is ready when the
+CPU starts issuing bus requests.
 
 ### 7.3 GFX reset
 
@@ -469,6 +516,10 @@ resetting immediately. The OS's interrupt handler decides what to do — typical
 a clean shutdown or a warm reboot — so the reset is **software-controlled**, not
 a bare hardware reset. `rstswb`'s current level is also readable as `RSTVAL`
 (`INTSR[16]`).
+
+Debouncing of the switch is left to software: the interrupt handler can mask
+`RSWINT`, write `1` to clear the status bit, poll `RSTVAL` until the switch has
+settled, and then re-enable `RSWINT`.
 
 ## 8. Register map
 
@@ -575,7 +626,23 @@ is held. Reset `0x1FF` (511). The field was widened to 10 bits to allow up to
 
 ### 9.11 `CHIPID` (0x2C, 32-bit, read-only)
 
-The Flipper chip revision / ID, hard-wired and copied into the register on reset.
+A hard-wired chip identifier, copied into the register on reset. The value packs
+a revision and two ASCII vendor fields:
+
+| Bits | Field | Meaning |
+|---|---|---|
+| 31:28 | `REV` | Chip revision |
+| 27:12 | `PART` | ASCII `"FP"` (`0x4650`) — from "FliPPer" |
+| 11:1 | `COMPANY` | ASCII `"X"` (`0x058`) |
+| 0 | — | Always `1` (the protocol requires the LSB to be set) |
+
+The retail revisions read:
+
+| Revision | `CHIPID` |
+|---|---|
+| Rev A | `0x046500B1` |
+| Rev B | `0x146500B1` |
+| Rev C | `0x246500B1` |
 
 ### 9.12 `STRGTH` (0x30, 32-bit)
 
@@ -595,6 +662,29 @@ damage the pads if held for a long time).
 | 20:18 | `DI_STR` | Disc |
 | 23:21 | `VI_STR` | Video |
 | 26:24 | `SD_STR` | Security / decode |
+
+The 3-bit value selects the pad drive **current**:
+
+| Value | Drive current |
+|---|---|
+| `000` | power down |
+| `001` | 4 mA |
+| `010` | 8 mA |
+| `011` | 12 mA |
+| `100` | 12 mA |
+| `101` | 16 mA |
+| `110` | 20 mA |
+| `111` | 24 mA |
+
+The reset value is `2` (`010`) = **8 mA** for every interface. That is the value
+the boot firmware keeps, and it must not be raised carelessly (large values on
+some interfaces can damage the pads if held for a long time). The recommended
+(and boot-code) setting per interface is:
+
+| Interface | Recommended drive |
+|---|---|
+| SDRAM, EXI0–2, SI, AI, VI | 8 mA |
+| Disc (DI), audio streaming (AIS) | 16 mA |
 
 ### 9.13 `CPUDBB` (0x34, 32-bit)
 

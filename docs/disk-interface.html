@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Disc Interface (DI)</title>
+  <meta name="description" content="GameCube Disc Interface (DI): the Flipper IO block that drives the intelligent Matsushita mini-DVD drive — the 12-byte command packet, immediate vs DMA mode, the 32-byte-block DMA engine, the break/error protocol, resets, and the full register map. Emulator model." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="icon" href="assets/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="assets/cube.svg" />
+  <link rel="apple-touch-icon" href="assets/icon-512.png" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html"><span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html">Audio Interface</a>
+      <a href="memory-interface.html">Memory Interface</a>
+      <a href="processor-interface.html">Processor Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="disk-interface.html" class="active">Disc Interface (DI)</a>
+      <a href="peripherals.html">Peripherals (EXI & SI)</a>
+      <a href="serial-interface.html">Serial Interface (SI)</a>
+      <a href="expansion-interface.html">Expansion Interface (EXI)</a>
+    </nav>
+    <div class="theme-toggle"><span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Disc Interface (DI)</p>
+      <h1>GameCube — Disc Interface (DI)</h1>
+      <blockquote><strong>DI</strong> (Disc Interface) is the block inside the <strong>Flipper</strong> ASIC that connects the console to the GameCube disc drive unit (DDU). The drive is an intelligent, command-driven device with its own microcontroller and firmware, so everything the console "knows" about the disc is sent as a <strong>command packet</strong> over a simple 8-bit, strobed, bidirectional bus. The DI is a register bank plus the sequencing logic that turns a command packet into bus-level handshakes, moves bulk data to/from main memory in 32-byte blocks (DMA), moves small immediate values to/from an on-chip buffer for register-access commands, and raises the DI interrupt to the PI. The physical media, the drive architecture and the DVD-Audio stream are covered separately in <a href="disk-drive.html">disk-drive.md</a> and in the external-interface hardware documentation.</blockquote>
+      <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation, the Flipper RTL and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a time-out, the exact latitude of a field, or an ambiguity in the original design note — it is called out as such. In every case the RTL is taken as authoritative over the published register descriptions.</p>
+      <h2>1. Overview</h2>
+      <p>The DI is a <strong>slave</strong> on the Flipper register bus and a <strong>master</strong> on the main-memory interface. It presents one interrupt (<code>di_piInt</code>, aggregated by the PI as <code>DIINT</code>) and drives the pins to the drive. Software never touches the bus directly; it only writes register values and lets the DI sequence the handshake.</p>
+      <h3>1.1 Sub-blocks</h3>
+      <p>The <code>io</code> block instantiates the DI as <code>io_di</code>, which is built from five sub-modules that together implement the whole interface:</p>
+      <table>
+        <tr><th>Module</th><th>Role</th></tr>
+        <tr><td><code>io_dipctl</code></td><td>The PI-facing control module — decodes the register address, implements the read mux, holds the programmer-visible status/cover/control registers (<code>DISR</code>, <code>DICVR</code>, <code>DICR</code>), derives the immediate/DMA and read/write strobes, and computes <code>di_piInt</code></td></tr>
+        <tr><td><code>io_didctl</code></td><td>The external-device control module — the command/data state machine that drives the DIDD/DIDIR/DIHSTRB pins, implements the break and error/reset protocols, counts the number of bytes transferred, and feeds the command/immediate/DMA buffers</td></tr>
+        <tr><td><code>io_dimctl</code></td><td>The memory-side control module — the DMA controller. Holds <code>DIMAR</code>/<code>DILENGTH</code>, issues 32-byte requests to the memory controller, tracks the block count and the last-block flag, and manages the double-buffered DMA staging</td></tr>
+        <tr><td><code>io_dififo</code></td><td>The DMA data staging FIFO — 8 × 64-bit entries, written either from the drive (DVD→memory) or from memory (memory→DVD), read out on the opposite side</td></tr>
+        <tr><td><code>io_dibuf</code></td><td>The command + immediate register file — the three 32-bit command buffers (<code>DICMDBUF0..2</code>) and the 32-bit immediate buffer (<code>DIIMMBUF</code>), readable/writable by both the CPU and the DI's device state machine</td></tr>
+      </table>
+      <p>Data flow for a <strong>read from disc</strong> (the common case):</p>
+      <pre><code>drive (DIDD) ──io_didctl──▶ io_dififo ── (32-byte full line) ──io_dimctl──▶ main memory</code></pre>
+      <p>For a <strong>write to disc</strong> the same FIFO is filled from memory by <code>io_dimctl</code> and drained to the drive by <code>io_didctl</code>.</p>
+      <h3>1.2 Connection to the drive</h3>
+      <p>The DI connects to the drive through the <strong>DDU connector (P9)</strong> on the motherboard. The drive is powered (5 V), ground and the DI mains signals plus the separate DVD-Audio pins; <code>MONI</code>/<code>MONOUT</code> on the connector are drive monitor lines not used by the DI itself. Full connector detail is in the external-interface hardware documentation; the signal-level description is in §2.</p>
+      <h2>2. External pins / signals</h2>
+      <p>All DI mains signals are <strong>LVCMOS</strong>. <code>DIBRK</code> is open-drain (output) and needs an external pull-up. Data flows over the <code>DIDD[7:0]</code> bus whose direction is set by <code>DIDIR</code>; the two strobes qualify data in opposite directions.</p>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>DIDD[7:0]</code></td><td>8</td><td>I/O</td><td>Data bus. When <code>DIDIR</code>=0 the DI drives it (data is <strong>written to</strong> the drive, qualified by <code>DIHSTRB</code>); when <code>DIDIR</code>=1 the drive drives it (data <strong>read from</strong> the drive, qualified by <code>DIDSTRB</code>). During reset it is latched as the DI configuration (see §5)</td></tr>
+        <tr><td><code>DIDIR</code></td><td>1</td><td>O</td><td>Direction control. <code>0</code> = DI→drive (outputs), <code>1</code> = drive→DI (inputs)</td></tr>
+        <tr><td><code>DIHSTRB</code></td><td>1</td><td>O</td><td>Host strobe. On a <strong>write</strong> it qualifies <code>DIDD[7:0]</code> (data valid on its rising edge); on a <strong>read</strong> it is a <em>ready</em> line (asserted = DI ready to accept another data byte)</td></tr>
+        <tr><td><code>DIDSTRB</code></td><td>1</td><td>I</td><td>Device strobe. On a <strong>read</strong> it qualifies <code>DIDD[7:0]</code> (data valid on its rising edge); on a <strong>write</strong> it is a <em>ready</em> line (asserted = drive ready for another byte)</td></tr>
+        <tr><td><code>DIERR</code></td><td>1</td><td>I</td><td>Drive error. Edge-triggered; a falling edge from the drive halts the current command and may raise <code>DEINT</code>. The drive deasserts it only after the host sends the next command (typically a request-sense)</td></tr>
+        <tr><td><code>DIBRK</code></td><td>1</td><td>I/O</td><td>Break (open-drain, external pull-up). The DI drives it low while idle; to break, the DI releases it (external pull-up raises it) and the <strong>drive</strong> becomes master, then pulses it low and releases — the DI recognises the <strong>rising edge</strong> as the break acknowledge. The DI delays a break until any command packet transfer completes (§3)</td></tr>
+        <tr><td><code>DICOVER</code></td><td>1</td><td>I</td><td>Disc cover switch. <code>1</code> = cover open, <code>0</code> = cover closed</td></tr>
+        <tr><td><code>DIRST</code></td><td>1</td><td>O</td><td>Drive reset. Not generated by the DI; driven from the PI general/reset register. Asserting it resets the drive</td></tr>
+      </table>
+      <h3>2.1 DVD-Audio (AIS) signals</h3>
+      <p>Streamed disc audio is carried on separate pins into Flipper and crosses into the Audio Interface (AI); they are not part of the DI command/data path, but are listed here because they are physically part of the drive interface.</p>
+      <table>
+        <tr><th>Signal</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>AISD</code></td><td>I</td><td>Serial left/right audio bitstream from the drive, synchronised to the rising edge of <code>AISCLK</code></td></tr>
+        <tr><td><code>AISLR</code></td><td>O</td><td>Frame / left-right signal at the sample rate (32 kHz / 48 kHz). It also gates flow: if it does not toggle after a stereo sample, the drive treats the stream as paused and sends zeros; the drive starts only after a high-low-high sequence</td></tr>
+        <tr><td><code>AISCLK</code></td><td>O</td><td>Free-running bit clock for <code>AISD</code></td></tr>
+      </table>
+      <p>The Audio Interface resamples the DVD-Audio stream to the mixer's sample rate; see the AI documentation and <a href="disk-drive.html">disk-drive.md</a>.</p>
+      <h2>3. Drive command model</h2>
+      <p>Software drives the disc controller entirely through the register file. A command is a <strong>12-byte packet</strong> held in <code>DICMDBUF0</code> (bytes 0–3), <code>DICMDBUF1</code> (bytes 4–7) and <code>DICMDBUF2</code> (bytes 8–11). The packet is sent over <code>DIDD[7:0]</code>, <strong>high byte first</strong> — the most-significant byte of <code>DICMDBUF0</code> is byte 0 and is the first one transmitted. In practice byte 0 is the opcode.</p>
+      <p>Issuing a command consists of:</p>
+      <ol>
+        <li>Writing the 12-byte packet into <code>DICMDBUF0..2</code>.</li>
+        <li>For a DMA transfer, writing <code>DIMAR</code> (destination/source address) and</li>
+      </ol>
+      <p><code>DILENGTH</code> (byte count).</p>
+      <ol>
+        <li>Starting the transfer by writing <code>DICR</code> with <code>TSTART</code>=1 and the direction</li>
+      </ol>
+      <p>(<code>RW</code>) and mode (<code>DMA</code>) bits.</p>
+      <h3>3.1 Immediate vs DMA mode</h3>
+      <p><code>DICR[DMA]</code> selects how the <em>data</em> portion of a command is carried:</p>
+      <ul>
+        <li><strong>DMA mode</strong> (<code>DMA</code>=1): data is streamed to/from <strong>main memory</strong> in 32-byte</li>
+      </ul>
+      <p>blocks through <code>io_dimctl</code>. <code>DIMAR</code>/<code>DILENGTH</code> name the memory operand. This is the normal bulk data path (game data reads, disc-ID reads, inquiries).</p>
+      <ul>
+        <li><strong>Immediate mode</strong> (<code>DMA</code>=0): data is transferred to/from the on-chip</li>
+      </ul>
+      <p><strong><code>DIIMMBUF</code></strong> (4 bytes) instead of memory. <code>DIMAR</code>/<code>DILENGTH</code> are ignored. The only packet command that uses immediate mode is the <strong>register access</strong> command — read or write a drive-internal register of 4 bytes or fewer.</p>
+      <p>Both modes send the full 12-byte command packet first. Immediate mode expects exactly a <strong>4-byte</strong> data exchange after the command; DMA mode exchanges <code>DILENGTH</code> bytes in 32-byte chunks.</p>
+      <h3>3.2 Read / write direction</h3>
+      <p><code>DICR[RW]</code> picks the direction:</p>
+      <ul>
+        <li><strong>Read</strong> (<code>RW</code>=0, "read from drive"): data flows drive→(DI)→destination. For</li>
+      </ul>
+      <p>DMA the destination is memory (<code>DIMAR</code>); for immediate it is <code>DIIMMBUF</code>. This is the normal case.</p>
+      <ul>
+        <li><strong>Write</strong> (<code>RW</code>=1, "write to drive"): data flows source→DI→drive. For DMA the</li>
+      </ul>
+      <p>source is memory (<code>DIMAR</code>); for immediate it is <code>DIIMMBUF</code>. Used by the register-access write command.</p>
+      <h3>3.3 Command-only transfer (zero length)</h3>
+      <p>If a DMA transfer is started with <code>DILENGTH</code> = 0, the DI performs a <strong>command-only</strong> transfer: it sends the 12-byte packet and then completes without any data phase. This is how the drive's side-effect commands (seek, stop motor, request error/status, audio-stream control, audio-buffer config) are issued and how a "response-less" control command is dispatched.</p>
+      <h3>3.4 <code>DIIMMBUF</code> immediate register access</h3>
+      <p>In immediate mode, <code>DIIMMBUF</code> carries the register data. <code>REGVAL0</code> (bits [31:24]) is the byte at drive-register offset +0, <code>REGVAL1</code> (+1), <code>REGVAL2</code> (+2), <code>REGVAL3</code> (+3). On a <strong>read</strong> command the drive returns the register contents into <code>DIIMMBUF</code> (byte 0 → <code>REGVAL0</code>); on a <strong>write</strong> command the DI sends <code>DIIMMBUF</code>'s bytes to the drive.</p>
+      <h3>3.5 Break protocol</h3>
+      <p>A break aborts the current operation. Software requests one by writing <code>DISR[BRK]</code> = 1. The DI delays the assertion of <code>DIBRK</code> until the <strong>whole command packet</strong> has been transferred (so a break can only take effect during a data phase or while idle), then releases <code>DIBRK</code>. The drive becomes master, pulses the line low, and releases; the DI sees the <strong>rising edge</strong> as the break acknowledge.</p>
+      <p>After an acknowledged break:</p>
+      <ul>
+        <li><code>DISR[BRK]</code> is cleared (the break request is no longer pending) and <code>DISR[BRKINT]</code></li>
+      </ul>
+      <p>is set.</p>
+      <ul>
+        <li><code>DICR[TSTART]</code> is cleared.</li>
+        <li>Any in-flight data transfer is aborted; <code>DILENGTH</code> holds the <strong>remaining</strong> byte</li>
+      </ul>
+      <p>count that had not been transferred (§4.3).</p>
+      <ul>
+        <li>A new command may be sent.</li>
+      </ul>
+      <p>A break issued during the command packet is held pending until the byte counter indicates the command is complete, then the break sequence runs.</p>
+      <h3>3.6 Error (<code>DIERR</code>) handling</h3>
+      <p>The drive asserts <code>DIERR</code> on a falling edge to signal an error. The DI:</p>
+      <ul>
+        <li><strong>Halts the current command</strong> immediately (the command/data state machine is</li>
+      </ul>
+      <p>reset by the error).</p>
+      <ul>
+        <li>Clears <code>DICR[TSTART]</code>.</li>
+        <li>Sets <code>DISR[DEINT]</code> (subject to the error being aligned to a transfer boundary —</li>
+      </ul>
+      <p>the drive is required to place the error at the end of the command packet, or at the end of a 4-byte immediate or 32-byte DMA block — see §6.2).</p>
+      <ul>
+        <li><strong>Suppresses <code>TCINT</code></strong> for the current transaction (an errored transfer does</li>
+      </ul>
+      <p>not report "transfer complete").</p>
+      <p><code>DIERR</code> is edge-triggered, so <code>DEINT</code> reflects the <strong>event</strong>, not the level. The drive deasserts <code>DIERR</code> only after receiving the next command (typically a request-sense that the software sends in response to the error interrupt).</p>
+      <h3>3.7 Typical drive command encodings</h3>
+      <p>The system library's low-level routines show the command-packet layout. For a DMA <strong>read</strong> the packet is <code>0xA8 00 00 subcmd</code> in <code>DICMDBUF0</code>, the sector offset <code>&#48;&#48; 2</code> in <code>DICMDBUF1</code>, and the byte length in <code>DICMDBUF2</code>; the control write is <code>DICR = DMA | TSTART</code>. Control-only commands write just the opcode plus (for some) parameters and start with only <code>TSTART</code> (command-only transfer). Examples seen in the low-level code include a read (subcmd 0), a disc-ID read (subcmd 0x40), a seek, a stop-motor, a request-error, an inquiry, a DVD-audio-stream control and a DVD-audio-buffer config. The exact opcode bytes and parameter fields live in the reverse-engineering notes; only the register-level mechanism is specified here.</p>
+      <h2>4. DMA transfers</h2>
+      <p><code>io_dimctl</code> is the DMA engine. It is a bus master on the main-memory interface and transfers data in <strong>32-byte (cache-line) transactions</strong>, independent of the requested length. It keeps a <strong>double buffer</strong> so the drive side and the memory side can proceed independently; on a DVD→memory transfer the FIFO is filled by the device state machine and drained a full line at a time to memory, on a memory→DVD transfer the buffers are filled from memory and drained to the FIFO.</p>
+      <h3>4.1 <code>DIMAR</code> and <code>DILENGTH</code></h3>
+      <table>
+        <tr><th>Field</th><th>Meaning</th></tr>
+        <tr><td><code>DIMAR[25:5]</code></td><td>21-bit memory address, 32-byte aligned. It is auto-incremented by one block (+32 bytes) each time a block completes, so the register always holds the <strong>next</strong> address to use</td></tr>
+        <tr><td><code>DILENGTH[25:5]</code></td><td>21-bit <strong>byte</strong> length, 32-byte aligned. It is decremented by one block (32 bytes) per block transferred; bits [4:0] read back as zero</td></tr>
+      </table>
+      <p><code>DIMAR</code>/<code>DILENGTH</code> are 21-bit fields occupying bits [25:5]; bits [31:26] and [4:0] are reserved and read as zero. Because of the field position, the value software writes to <code>DILENGTH</code> in bytes is stored as <code>bytes &#48;&#48; 5</code> (the number of blocks). A DMA transfer starts only when <code>DILENGTH</code> is non-zero; a zero length selects the command-only path (§3.3).</p>
+      <h3>4.2 Operation</h3>
+      <p>For a <strong>DVD→memory</strong> read:</p>
+      <ol>
+        <li><code>io_didctl</code> sends the 12-byte command, then streams data into the FIFO one</li>
+      </ol>
+      <p>byte at a time, gated by <code>DIDSTRB</code>.</p>
+      <ol>
+        <li>When a full 32-byte line is present, <code>io_dimctl</code> issues a memory write</li>
+      </ol>
+      <p>(<code>DiMemReq</code>/<code>DiMemRd</code>=0), increments <code>DIMAR</code> and decrements <code>DILENGTH</code>.</p>
+      <ol>
+        <li>The last block is flagged (<code>lastdma</code>) and, for the write-to-memory direction,</li>
+      </ol>
+      <p>a <strong>flush</strong> handshake (<code>DiMemFlush</code>/<code>MemFlushAck</code>) confirms the write is committed before completion is declared.</p>
+      <p>For a <strong>memory→DVD</strong> write the sequence is reversed (memory read, then byte stream to the drive). The address/width of <code>DiMemAddr[25:5]</code> constrains DMA to the main-memory region (up to bit 25, i.e. the 24–32 MB memory window the PI decodes).</p>
+      <h3>4.3 <code>DILENGTH</code> after break / error / reset</h3>
+      <p>The length register updates as blocks complete. If a DMA transfer is interrupted by a <strong>break</strong>, an <strong>error</strong>, or a <strong>soft reset</strong>, the blocks that did not complete are not counted, so <code>DILENGTH</code> holds the amount <strong>left</strong> to transfer when the transfer was aborted. This lets software resume or account for the partial transfer. (This is the RTL behaviour; the published description states the same thing.)</p>
+      <h2>5. Resets & config</h2>
+      <h3>5.1 DI reset (<code>DIRST</code> / PI <code>CONFIG</code>)</h3>
+      <p>The drive reset (<code>DIRST</code>) is <strong>not</strong> driven by the DI itself — it comes from the PI general/reset register. <code>CONFIG[2]</code> (<code>DIRSTB</code>) at <code>0x0C003024</code> is the disc-interface reset control: writing <code>0</code> asserts reset, writing <code>1</code> releases it. <code>DIRSTB</code> is read/write (its state is readable via <code>CONFIG</code>) and is <strong>left asserted at power-on until the boot code writes <code>CONFIG</code> to release it</strong>, in contrast to the memory interface which is released automatically shortly after power-up. The DI asserts <code>DIRST</code> to the drive while <code>DIRSTB</code> is in its reset state. Asserting the system-reset bit (<code>CONFIG[0]</code>/<code>SYSRSTB</code>) also pulses <code>DIRSTB</code>. See the <a href="processor-interface.html">processor-interface spec</a> §7.2 for the CONFIG model.</p>
+      <h3>5.2 DI configuration latch (<code>DICONFIG</code>)</h3>
+      <p>At reset the DI <strong>latches the state of the <code>DIDD[7:0]</code> bus</strong> into the read-only <code>DICONFIG</code> register (8-bit <code>CONFIG</code> field in bits [7:0]). The latches sample the bus while <code>resetb</code> is asserted and hold the value. The configuration is set by the board's strapping on the data bus; currently <strong>only bit 0 is meaningful</strong> — <code>DIDD[0]</code> selects whether the boot-ROM <strong>scramble</strong> is disabled. Other bits are reserved.</p>
+      <h2>6. Interrupts</h2>
+      <p>The DI raises a single interrupt to the PI interrupt controller as <code>di_piInt</code> (<code>DIINT</code>), which the PI aggregates as <strong>INTSR bit 2</strong> (<code>DIINT</code>/<code>DIMSK</code>). The DI's own interrupt sources are the four status/mask pairs inside <code>DISR</code> and <code>DICVR</code>:</p>
+      <table>
+        <tr><th>Status bit</th><th>Mask bit</th><th>Source</th></tr>
+        <tr><td><code>DISR[BRKINT]</code> (6)</td><td><code>DISR[BRKINTMSK]</code> (5)</td><td>Break completed (break acknowledge received from the drive)</td></tr>
+        <tr><td><code>DISR[TCINT]</code> (4)</td><td><code>DISR[TCINTMSK]</code> (3)</td><td>Transfer complete (DMA or immediate transfer finished)</td></tr>
+        <tr><td><code>DISR[DEINT]</code> (2)</td><td><code>DISR[DEINTMSK]</code> (1)</td><td>Drive error (<code>DIERR</code> asserted)</td></tr>
+        <tr><td><code>DICVR[CVRINT]</code> (2)</td><td><code>DICVR[CVRINTMSK]</code> (1)</td><td>Disc cover closed</td></tr>
+      </table>
+      <h3>6.1 Aggregation and masking</h3>
+      <p><code>di_piInt</code> is the OR of the four <code>(status &amp; mask)</code> pairs:</p>
+      <pre><code>di_piInt = (BRKINT &amp; BRKINTMSK) | (TCINT &amp; TCINTMSK) | (DEINT &amp; DEINTMSK) | (CVRINT &amp; CVRINTMSK)</code></pre>
+      <p>The mask bits only gate the interrupt to the CPU; they do <strong>not</strong> affect whether the corresponding status bit is set in the register. Each status bit is set purely by its hardware event; only its ability to reach <code>di_piInt</code> is masked. Because the DRAM-side aggregation happens in the PI, an emulator models <code>di_piInt</code> as the masked OR above and lets the PI combine it with the other sources.</p>
+      <h3>6.2 Ordering (error vs transfer-complete)</h3>
+      <p>The DI deliberately orders the completions so that an error is visible before a transfer complete. <code>TCINT</code> is only asserted once the device strobe is low (the "ready" state); this guarantees that if <code>DIERR</code> coincides with the end of a transfer, the error (<code>DEINT</code>) is recorded and <code>TCINT</code> is <strong>not</strong> asserted. An emulator should reproduce this: on a transfer that also ends in an error, raise <code>DEINT</code> and suppress <code>TCINT</code> for that transaction.</p>
+      <h3>6.3 Clearing semantics</h3>
+      <p>Each status bit is <strong>write-1-to-clear</strong> — writing a <code>1</code> to the bit (in the low halfword of <code>DISR</code>/<code>DICVR</code>) clears it; writing <code>0</code> has no effect. In the low-level interrupt handler the software reads the register, and writes back the active interrupt bits (to clear them) together with the current mask bits (to preserve them). <code>DEINT</code> is additionally dependent on the drive deasserting <code>DIERR</code> (which happens only after the next command is issued), so clearing the status bit and externally resetting the drive's error line are both involved.</p>
+      <h2>7. Register access (16-bit model)</h2>
+      <p>The DI registers are reached through the Flipper <strong>16-bit</strong> IO register interface (<code>PiData[15:0]</code>, <code>PiAddr[19:1]</code>, halfword-granular). A register is 32-bit internally and addressed as two 16-bit halves: the <strong>high word</strong> at byte offset <code>N</code> (even halfword), the <strong>low word</strong> at <code>N+2</code>. A 32-bit CPU access is two back-to-back 16-bit transfers, high word first. Only 2-byte and 4-byte accesses are valid.</p>
+      <p>Decode within the block uses <code>PiAddr[5:2]</code> to select one of the ten DI registers (byte offset = index × 4). The high/low selection uses <code>PiAddr[1]</code>:</p>
+      <ul>
+        <li><code>PiAddr[1]</code> = 0 selects the <strong>high</strong> halfword (offset <code>N</code>).</li>
+        <li><code>PiAddr[1]</code> = 1 selects the <strong>low</strong> halfword (offset <code>N+2</code>).</li>
+      </ul>
+      <p>The writable halves differ by register type. The <strong>control/status</strong> registers <code>DISR</code>, <code>DICVR</code> and <code>DICR</code> are written at the <strong>low</strong> halfword only; a write to their high halfword is ignored (this is a direct consequence of the decode: the write strobes are gated on <code>PiAddr[1]</code>). The <strong>data/address/length</strong> registers (<code>DIMAR</code>, <code>DILENGTH</code>, <code>DICMDBUF0..2</code>, <code>DIIMMBUF</code>) use <strong>both</strong> halves — the high halfword carries bits [31:16], the low halfword bits [15:0]. The read side mirrors this: <code>DISR</code>/<code>DICVR</code>/<code>DICR</code>/<code>DICONFIG</code> are readable at the low halfword, while the buffers and <code>DIMAR</code>/<code>DILENGTH</code> return both halves.</p>
+      <h2>8. Register map</h2>
+      <p>The DI block occupies <code>0x0C006000</code>–<code>0x0C006024</code> (uncached physical alias <code>0xCC006000</code>). It is IO-module <code>io_addr_di</code> (<code>PiAddr[11:10]</code> = <code>0</code>). Each register is 32-bit internally; the table gives the byte offset from <code>0x0C006000</code>. Reset values are shown where a defined power-on value exists (<code>–</code> means data-dependent / not initialised).</p>
+      <table>
+        <tr><th>Addr</th><th>Name</th><th>R/W</th><th>Description</th></tr>
+        <tr><td><code>0x00</code></td><td><code>DISR</code></td><td>R/W</td><td>Status: break, transfer-complete, drive-error; the break request bit; masks</td></tr>
+        <tr><td><code>0x04</code></td><td><code>DICVR</code></td><td>R/W</td><td>Cover: current cover state, cover-close interrupt + mask</td></tr>
+        <tr><td><code>0x08</code></td><td><code>DICMDBUF0</code></td><td>R/W</td><td>Command packet bytes 0–3</td></tr>
+        <tr><td><code>0x0C</code></td><td><code>DICMDBUF1</code></td><td>R/W</td><td>Command packet bytes 4–7</td></tr>
+        <tr><td><code>0x10</code></td><td><code>DICMDBUF2</code></td><td>R/W</td><td>Command packet bytes 8–11</td></tr>
+        <tr><td><code>0x14</code></td><td><code>DIMAR</code></td><td>R/W</td><td>DMA memory address, 32-byte aligned (<code>[25:5]</code>)</td></tr>
+        <tr><td><code>0x18</code></td><td><code>DILENGTH</code></td><td>R/W</td><td>DMA byte length, 32-byte aligned (<code>[25:5]</code>)</td></tr>
+        <tr><td><code>0x1C</code></td><td><code>DICR</code></td><td>R/W</td><td>Control: read/write, DMA/immediate, transfer start</td></tr>
+        <tr><td><code>0x20</code></td><td><code>DIIMMBUF</code></td><td>R/W</td><td>Immediate-mode register data (4 bytes)</td></tr>
+        <tr><td><code>0x24</code></td><td><code>DICONFIG</code></td><td>RO</td><td>Drive configuration latched from <code>DIDD</code> at reset</td></tr>
+      </table>
+      <p>The register index derived from <code>PiAddr[5:2]</code> matches these offsets (index × 4), and matches the register table in the drive/media document <code><a href="disk-drive.html">disk-drive.md</a></code>; the RTL confirms every offset. The drive/media document's high-level table is otherwise consistent with the RTL, so no offset correction is needed — the RTL merely pins down the <strong>bit positions</strong> (the 21-bit <code>[25:5]</code> fields, for example) that the higher-level table leaves implicit.</p>
+      <h2>9. Register fields</h2>
+      <h3>9.1 <code>DISR</code> (0x00)</h3>
+      <p>DI status register. Reset <code>0x0000</code>. Bits are write-1-to-clear for the status bits; the mask bits are plain R/W. All bits live in the low halfword.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>6</td><td><code>BRKINT</code></td><td>R/WC</td><td>Break-complete interrupt status. Set when the drive acknowledges a break (rising edge on <code>DIBRK</code>). Write <code>1</code> clears</td><td>0</td></tr>
+        <tr><td>5</td><td><code>BRKINTMSK</code></td><td>R/W</td><td>Break-complete interrupt mask (1 = enabled)</td><td>0</td></tr>
+        <tr><td>4</td><td><code>TCINT</code></td><td>R/WC</td><td>Transfer-complete interrupt status. Set when a DMA or immediate transfer completes (delayed until the device strobe is low so an error is seen first). Write <code>1</code> clears</td><td>0</td></tr>
+        <tr><td>3</td><td><code>TCINTMSK</code></td><td>R/W</td><td>Transfer-complete interrupt mask</td><td>0</td></tr>
+        <tr><td>2</td><td><code>DEINT</code></td><td>R/WC</td><td>Drive-error interrupt status. Set on the falling edge of <code>DIERR</code>. Write <code>1</code> clears the internal status; the drive also deasserts <code>DIERR</code> on the next command</td><td>0</td></tr>
+        <tr><td>1</td><td><code>DEINTMSK</code></td><td>R/W</td><td>Drive-error interrupt mask</td><td>0</td></tr>
+        <tr><td>0</td><td><code>BRK</code></td><td>R/WC</td><td>Break request. Write <code>1</code> to request a break; it is cleared by the break acknowledge. Read gives the request/pending state</td><td>0</td></tr>
+        <tr><td>31:7</td><td>—</td><td>R</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <h3>9.2 <code>DICVR</code> (0x04)</h3>
+      <p>DI cover register. Low halfword holds the fields; <code>CVR</code> is read-only and depends on <code>DICOVER</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>2</td><td><code>CVRINT</code></td><td>R/WC</td><td>Cover-close interrupt status. Set when the cover <strong>closes</strong> (transition of <code>DICOVER</code> from open to closed). Write <code>1</code> clears</td><td>0</td></tr>
+        <tr><td>1</td><td><code>CVRINTMSK</code></td><td>R/W</td><td>Cover interrupt mask</td><td>0</td></tr>
+        <tr><td>0</td><td><code>CVR</code></td><td>R</td><td>Current cover state: 0 = closed, 1 = open (reflects <code>DICOVER</code>)</td><td><code>–</code></td></tr>
+        <tr><td>31:3</td><td>—</td><td>R</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <blockquote><strong>Correction vs. the published description.</strong> The external-interface documentation describes <code>CVRINT</code> as firing whenever the <code>DICOVER</code> status <em>changes</em> (open <em>or</em> closed). The RTL, however, was changed to generate the cover interrupt <strong>only when the cover is closed</strong> — the set condition is <code>(~cover_now) &amp; cover_prev</code> (cover was open and has become closed), not an arbitrary change of the signal. The RTL wins and is what an emulator should model.</blockquote>
+      <h3>9.3 <code>DICMDBUF0</code> (0x08)</h3>
+      <p>Command packet bytes 0–3. All reset to <code>0</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>31:24</td><td><code>CMDBYTE0</code></td><td>R/W</td><td>Packet byte 0 — the first byte transmitted (the opcode)</td></tr>
+        <tr><td>23:16</td><td><code>CMDBYTE1</code></td><td>R/W</td><td>Packet byte 1</td></tr>
+        <tr><td>15:8</td><td><code>CMDBYTE2</code></td><td>R/W</td><td>Packet byte 2</td></tr>
+        <tr><td>7:0</td><td><code>CMDBYTE3</code></td><td>R/W</td><td>Packet byte 3</td></tr>
+      </table>
+      <h3>9.4 <code>DICMDBUF1</code> (0x0C)</h3>
+      <p>Command packet bytes 4–7. Same layout: <code>CMDBYTE4</code> [31:24] … <code>CMDBYTE7</code> [7:0]. Reset <code>0</code>.</p>
+      <h3>9.5 <code>DICMDBUF2</code> (0x10)</h3>
+      <p>Command packet bytes 8–11. Same layout: <code>CMDBYTE8</code> [31:24] … <code>CMDBYTE11</code> [7:0]. Reset <code>0</code>.</p>
+      <h3>9.6 <code>DIMAR</code> (0x14)</h3>
+      <p>DMA memory address. A 21-bit field at <code>[25:5]</code>. Reset <code>0</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>25:5</td><td><code>DIMAR</code></td><td>R/W</td><td>Main-memory address for the current DMA (destination when <code>RW</code>=read, source when <code>RW</code>=write). Incremented by +32 per block transferred</td><td>0</td></tr>
+        <tr><td>31:26</td><td>—</td><td>R</td><td>Reserved</td><td>0</td></tr>
+        <tr><td>4:0</td><td>—</td><td>R</td><td>Reserved, read zero (all DMA is 32-byte aligned)</td><td>0</td></tr>
+      </table>
+      <p>The 21-bit field is written/read as two halves: the high halfword carries <code>[25:16]</code> (in bits [9:0] of the halfword), the low halfword carries <code>[15:5]</code> (in bits [15:5] of the halfword).</p>
+      <h3>9.7 <code>DILENGTH</code> (0x18)</h3>
+      <p>DMA byte length. A 21-bit field at <code>[25:5]</code>. Reset <code>0</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>25:5</td><td><code>DILENGTH</code></td><td>R/W</td><td>DMA byte length (32-byte aligned). Decremented by one block (32 bytes) per block transferred; on a break it holds the <strong>remaining</strong> byte count. Zero selects a command-only transfer</td><td>0</td></tr>
+        <tr><td>31:26</td><td>—</td><td>R</td><td>Reserved</td><td>0</td></tr>
+        <tr><td>4:0</td><td>—</td><td>R</td><td>Reserved, read zero (lengths are multiples of 32)</td><td>0</td></tr>
+      </table>
+      <h3>9.8 <code>DICR</code> (0x1C)</h3>
+      <p>DI control register. Reset <code>0</code>. Written at the low halfword.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>2</td><td><code>RW</code></td><td>R/W</td><td>Direction: 0 = read (drive→DI), 1 = write (DI→drive)</td><td>0</td></tr>
+        <tr><td>1</td><td><code>DMA</code></td><td>R/W</td><td>Mode: 0 = immediate (<code>DIIMMBUF</code>), 1 = DMA (<code>DIMAR</code>/<code>DILENGTH</code>, main memory)</td><td>0</td></tr>
+        <tr><td>0</td><td><code>TSTART</code></td><td>R/WC</td><td>Transfer start. Write <code>1</code> to execute the command (and read the status). Cleared by transfer complete, by a break acknowledge, or by <code>DIERR</code></td><td>0</td></tr>
+        <tr><td>31:3</td><td>—</td><td>R</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <h3>9.9 <code>DIIMMBUF</code> (0x20)</h3>
+      <p>Immediate-data buffer. Reset <code>0</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>31:24</td><td><code>REGVAL0</code></td><td>R/W</td><td>Drive register offset +0 data</td></tr>
+        <tr><td>23:16</td><td><code>REGVAL1</code></td><td>R/W</td><td>Drive register offset +1 data</td></tr>
+        <tr><td>15:8</td><td><code>REGVAL2</code></td><td>R/W</td><td>Drive register offset +2 data</td></tr>
+        <tr><td>7:0</td><td><code>REGVAL3</code></td><td>R/W</td><td>Drive register offset +3 data</td></tr>
+      </table>
+      <h3>9.10 <code>DICONFIG</code> (0x24, read-only)</h3>
+      <p>Drive configuration. Reset value is latched from <code>DIDD[7:0]</code> at reset.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Type</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>7:0</td><td><code>CONFIG</code></td><td>R</td><td>Latched configuration. Bit 0 = ROM-scramble disable; remaining bits reserved</td><td><code>DIDD</code> strapped</td></tr>
+        <tr><td>31:8</td><td>—</td><td>R</td><td>Reserved</td><td>—</td></tr>
+      </table>
+      <h2>10. Emulator notes</h2>
+      <ol>
+        <li><strong>Register file and 16-bit port.</strong> Model each DI register as a 32-bit value,</li>
+      </ol>
+      <p>but route all access through the 16-bit interface: a 2-byte access touches one halfword, a 4-byte access does two halfword accesses, high word first. Since this block is in the IO space, reject (via the PI error) any non-2/4-byte access and any burst. Apply the high/low write-locality: gate writes to <code>DISR</code>/<code>DICVR</code>/<code>DICR</code> on the <strong>low</strong> halfword (<code>PiAddr[1]</code> = 1), while <code>DIMAR</code>/<code>DILENGTH</code>/<code>DICMDBUF0..2</code>/<code>DIIMMBUF</code> accept both halves.</p>
+      <ol>
+        <li><strong>Command packet.</strong> Treat the three command buffers as a 12-byte big-endian</li>
+      </ol>
+      <p>packet (byte 0 = <code>DICMDBUF0[31:24]</code>, transmitted first). Read the packet from the register values; send byte 0 to the drive first.</p>
+      <ol>
+        <li><strong>Modes.</strong> On <code>TSTART</code> rising, decode <code>DMA</code>/<code>RW</code> and <code>DILENGTH</code>: if <code>DMA</code>=0,</li>
+      </ol>
+      <p>do the immediate 4-byte transfer via <code>DIIMMBUF</code>; if <code>DMA</code>=1 and <code>DILENGTH</code>>0, do a DMA transfer; if <code>DMA</code>=1 and <code>DILENGTH</code>=0, do a command-only transfer. For DMA read, copy drive data into memory starting at <code>DIMAR</code>; for DMA write, copy memory at <code>DIMAR</code> to the drive. Increment <code>DIMAR</code> and decrement <code>DILENGTH</code> by 32 bytes per block.</p>
+      <ol>
+        <li><strong>DMA block flow.</strong> Emulate the double-buffered 32-byte staging; model the</li>
+      </ol>
+      <p>transfer as a sequence of 32-byte blocks to/from main memory. Issue a flush (commit) at the end of a DVD→memory transfer before declaring completion.</p>
+      <ol>
+        <li><strong>Break.</strong> <code>DISR[BRK]</code>=1 requests a break; if a command packet is mid-transfer,</li>
+      </ol>
+      <p>defer it until the packet is fully sent. On the later break acknowledge, clear <code>DISR[BRK]</code>, set <code>DISR[BRKINT]</code>, and clear <code>DICR[TSTART]</code>. Abort the DMA and leave <code>DILENGTH</code> at the not-yet-transferred count.</p>
+      <ol>
+        <li><strong>Error.</strong> <code>DIERR</code> falling edge sets <code>DISR[DEINT]</code>, clears <code>DICR[TSTART]</code>, and</li>
+      </ol>
+      <p>suppresses <code>TCINT</code> for that transaction. Clear <code>DEINT</code> on <code>DISR[2]</code> write-1.</p>
+      <ol>
+        <li><strong>Cover interrupt.</strong> Track <code>DICOVER</code>. Set <code>DICVR[CVR]</code> to the current level</li>
+      </ol>
+      <p>always. Set <code>DICVR[CVRINT]</code> <strong>only on the cover-closed transition</strong> (open → closed), per the RTL, not on any change.</p>
+      <ol>
+        <li><strong>Interrupt line.</strong> Drive <code>di_piInt</code> = `(BRKINT&BRKINTMSK) | (TCINT&TCINTMSK)</li>
+      </ol>
+      <p>| (DEINT&DEINTMSK) | (CVRINT&CVRINTMSK)<code>, and hand it to the PI as INTSR bit 2 (</code>DIINT`). Do not infer the PRI inside the DI; the PI aggregates.</p>
+      <ol>
+        <li><strong>Reset / config.</strong> Model <code>DICONFIG</code> as an 8-bit latch of the strapped</li>
+      </ol>
+      <p><code>DIDD[7:0]</code> reading bit 0 = ROM-scramble-disable. Drive <code>DIRST</code> from the PI <code>CONFIG[2]</code> (<code>DIRSTB</code>), and reset the DI's command/data state machine on its asserted-to-released transition.</p>
+      <ol>
+        <li><strong>Direction of control writes.</strong> Remember that the DI command is initiated by</li>
+      </ol>
+      <p>writing <code>DICR</code> with <code>TSTART</code>=1 in the <strong>low</strong> halfword. Software commonly writes <code>DICR</code> (and <code>DISR</code>/<code>DICVR</code>) as a 32-bit value; the high halfword is ignored, so only the low halfword's bits matter for these registers.</p>
+      <h2>11. References</h2>
+      <ul>
+        <li><code>HW/IO/DiskInterface.md</code> — DI signal definitions, DDU connector, and register</li>
+      </ul>
+      <p>field descriptions (based on the external-interfaces patent). Baseline for signal naming/meaning; bit positions cross-checked against the RTL.</p>
+      <ul>
+        <li><code>specs/architecture/disk-drive.md</code> — the 3" mini-DVD media and drive</li>
+      </ul>
+      <p>architecture; cross-linked here for the drive model, DVD-Audio stream and copy-protection overview.</p>
+      <ul>
+        <li><code>specs/architecture/processor-interface.md</code> — §3 register access (16-bit</li>
+      </ul>
+      <p>model), §4 interrupts (<code>DIINT</code> is INTSR bit 2), §7.2 <code>CONFIG[2]</code> <code>DIRSTB</code> disc-interface reset, and the PI error model for the IO register space.</p>
+      <ul>
+        <li><code>RE/DVD/DVDLow.c</code> — system low-level drive command routines (command-packet</li>
+      </ul>
+      <p>layout, immediate/DMA start, break, error/interrupt handling, cover handling; the <code>0x3024</code> reset-register usage).</p>
+      <ul>
+        <li><code>RE/DVD/dvdfs.txt</code> — disc filesystem / command-block notes.</li>
+        <li><strong>US Patent 6,609,977</strong> (External Interfaces) — the DI signal and register</li>
+      </ul>
+      <p>behaviour, break protocol, and immediate/DMA/register-access modes.</p>
+      <blockquote>Register-level facts are taken from the Flipper RTL sources, which are the authority for the DI sub-block structure (<code>io_dipctl</code>, <code>io_didctl</code>, <code>io_dimctl</code>, <code>io_dififo</code>, <code>io_dibuf</code>), the exact bit positions and the interrupt/break/error logic. All such facts above are paraphrased from them.</blockquote>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

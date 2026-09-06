@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Serial Interface (SI)</title>
+  <meta name="description" content="GameCube Serial Interface (SI): the four controller ports — the controller protocol, per-channel double-buffered OUT/IN buffers, polling (SIPOLL), communication transfers (SICOMCSR/SIRAM), per-channel errors (SISR) and the SI/EXI clock lock. Emulator model." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="icon" href="assets/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="assets/cube.svg" />
+  <link rel="apple-touch-icon" href="assets/icon-512.png" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html"><span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html">Audio Interface</a>
+      <a href="memory-interface.html">Memory Interface</a>
+      <a href="processor-interface.html">Processor Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="peripherals.html">Peripherals (EXI & SI)</a>
+      <a href="serial-interface.html" class="active">Serial Interface (SI)</a>
+      <a href="expansion-interface.html">Expansion Interface (EXI)</a>
+    </nav>
+    <div class="theme-toggle"><span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Serial Interface (SI)</p>
+      <h1>GameCube — Serial Interface (SI)</h1>
+      <blockquote><strong>SI</strong> (the Serial Interface) is the block inside the <strong>Flipper</strong> ASIC that drives the four GameCube <strong>controller ports</strong> (and the keyboard, which shares the same connector type). It is the serial clock and framing engine that turns a short command/response packet into a single half-duplex, pulse-width-modulated line per channel, periodically polls the controllers on a schedule tied to the video vertical blank, and captures the controller's reply into a double-buffered set of registers. A small <strong>Communication RAM</strong> and a second, software-initiated transfer mode (<code>SICOM</code>) let the same hardware talk to any intelligent device on a channel (for example a Game Boy Advance) using variable-length transfers.</blockquote>
+      <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation, the Flipper RTL (<code>io_Si*</code>) and the reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a time-out, the exact meaning of a length field — it is called out as such. This is <em>not</em> the controller itself: the SI only supplies the electrical framing and the registers; the device on the other end of the wire responds according to its own protocol (§3).</p>
+      <p>The SI is one of the four blocks in the Flipper <strong>IO-module</strong> space (with DI, EXI and AI). It is decoded as IO module <code>io_addr_si</code> (<code>PiAddr[11:10] == 1</code>) and sits at <strong>physical base <code>0x0C006400</code></strong> (uncached alias <strong><code>0xCC006400</code></strong>).</p>
+      <h2>1. Overview</h2>
+      <p>The SI is a small, heavily state-machine-driven block. It has <strong>four identical channels</strong>; each channel owns one controller port and the full command/response buffering for that port. A single polling counter is shared by all four channels and decides <em>when</em> a channel is polled; each channel has its own state machine that implements the transfer itself.</p>
+      <h3>1.1 Sub-blocks</h3>
+      <table>
+        <tr><th>Block</th><th>Role</th></tr>
+        <tr><td><code>io_Si</code></td><td>Top level — register address decode, the read/write datapath mux, the channel-to-SRAM routing and the interrupt aggregation</td></tr>
+        <tr><td><code>io_SiCSR</code></td><td>The control/status registers — <code>SICOMCSR</code>, <code>SISR</code>, <code>SIEXILK</code>; the interrupt/mask bits; the WR and TSTART decoding; the per-channel error latch</td></tr>
+        <tr><td><code>io_SiPoll</code></td><td>The shared polling counter — <code>SIPOLL</code> X/Y, per-channel enable, vblank-copy, the HSync/VSync-derived poll schedule</td></tr>
+        <tr><td><code>io_SiXfer</code></td><td>The serial <strong>transfer engine</strong> — shift out the command, shift in the response, duty-cycle (pulse-width) modulation, big-endian, error detection (overrun/underrun/collision/no-response)</td></tr>
+        <tr><td><code>io_SiBuf</code></td><td>The per-channel <strong>double buffers</strong> — the CPU-visible <code>SICnOUTBUF</code>/<code>SICnINBUFH/L</code> and the shadow buffers used during an actual transfer, plus the lock/unlock read sequence</td></tr>
+        <tr><td><code>io_SiRAM</code></td><td>The <strong>Communication RAM</strong> — 128 bytes of single-port SRAM, byte addressing to the SI, 16-bit word addressing to the CPU</td></tr>
+        <tr><td><code>io_SiCh</code></td><td>Per-channel wrapper — instantiates one <code>io_SiBuf</code>, one <code>io_SiXfer</code> and one <code>io_SiSM</code></td></tr>
+        <tr><td><code>io_SiSM</code></td><td>Per-channel <strong>master state machine</strong> — sequences COM vs polling, counts bytes, talks to the RAM and buffers</td></tr>
+        <tr><td><code>io_SiClk</code></td><td>The SI clock generator — divides the Flipper IO clock down to the ~2 MHz serial tick</td></tr>
+        <tr><td><code>io_SiSync</code></td><td>Clock-domain synchronisers for the 27 MHz VSync/HSync and the serial data line</td></tr>
+      </table>
+      <h3>1.2 The four channels</h3>
+      <p>Channels 0–3 each carry one controller port. In the retail console the controller ports 0–3 correspond to channels 0–3, and the same four channels are what an emulator models. There is no inherent difference between the channels beyond their register address and their physical port; the block is fully symmetric.</p>
+      <h2>2. External pins / signals</h2>
+      <p>The SI connects to the four controller connectors and to the video interface (for the poll timing). The light-gun trigger pins are physically on the same connector group but are <strong>not consumed by the SI</strong> — they pass straight through to the VI's beam-position latch (see below).</p>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Direction</th><th>Description</th></tr>
+        <tr><td><code>sidi0</code>..<code>sidi3</code></td><td>1 each</td><td>in</td><td>Serial data <strong>in</strong> from channels 0–3 (controller → SI)</td></tr>
+        <tr><td><code>sido0</code>..<code>sido3</code></td><td>1 each</td><td>out</td><td>Serial data <strong>out</strong> to channels 0–3 (SI → controller), driven <strong>inverted</strong> (negative logic for the external buffer)</td></tr>
+        <tr><td><code>guntrg[1:0]</code></td><td>2</td><td>in</td><td>Light-gun trigger inputs — <strong>pass through</strong> to the VI's HV counter/latch for connectors 1 and 2 (see below)</td></tr>
+        <tr><td><code>vi_ioVsync</code></td><td>1</td><td>in</td><td>Vertical blank from the VI — used to schedule the poll counter</td></tr>
+        <tr><td><code>vi_ioHsync</code></td><td>1</td><td>in</td><td>Horizontal blank from the VI — the poll interval clock</td></tr>
+        <tr><td><code>si_piInt</code></td><td>1</td><td>out</td><td>SI interrupt request to the PI (aggregated as <code>SIINT</code>, PI <code>INTSR</code> bit 3)</td></tr>
+        <tr><td><code>Lock32MHz</code></td><td>1</td><td>out</td><td>Lock-out of the EXI 32 MHz clock setting (from <code>SIEXILK</code>)</td></tr>
+      </table>
+      <p>The four controller ports (motherboard <code>§4.2</code>) are identical: communication is serial and half-duplex over a <strong>single</strong> data line per channel, using pulse-width/duty-cycle modulation, transferred big-endian. The command/response packets are only a few bytes; the device is intelligent, so the SI does not decode the packets, it only clocks them.</p>
+      <h3>2.1 Light-gun triggers — a note on ownership</h3>
+      <p><code>guntrg[0]</code> and <code>guntrg[1]</code> are brought out beside the controller data lines, but in the Flipper RTL they are <strong>passed straight through the <code>io</code> module</strong> to the VI (<code>io_TstMux</code>, <code>io.v</code> — "gun trg pass through to VI"). The VI latches the current beam (HV) position when a trigger edge arrives, into its <code>VI_LATCH_0/1</code> registers. The SI has <strong>no</strong> trigger input and no trigger register; emulators should route the light-gun trigger to the VI, not to the SI. This is called out because a casual reading of the connector group (motherboard groups <code>guntrg</code> under the "Controller (SI)" heading) can mislead.</p>
+      <h2>3. The controller protocol</h2>
+      <p>The SI speaks a byte-oriented serial protocol to the device on the wire. The hardware does the framing; the semantics of the bytes are the device's business.</p>
+      <h3>3.1 Command/response packet</h3>
+      <ul>
+        <li>The host (via <code>SICnOUTBUF</code>) supplies a <strong>3-byte</strong> command packet for a poll:</li>
+      </ul>
+      <p><code>CMD</code>, <code>OUTPUT0</code>, <code>OUTPUT1</code>. These are shifted out <strong>in that order</strong> — <code>CMD</code> first (byte 0), then <code>OUTPUT0</code>, then <code>OUTPUT1</code>.</p>
+      <ul>
+        <li>The device replies with a <strong>response packet</strong>. For a poll the SI always shifts</li>
+      </ul>
+      <p>in <strong>8 bytes</strong> (<code>INPUT0</code>..<code>INPUT7</code>). The device returns fewer meaningful bytes for a short reply (e.g. the 3-byte controller status), leaving the rest as <code>0</code>.</p>
+      <ul>
+        <li>The very first response byte, <code>INPUT0</code>, is captured as <strong>6 bits</strong> — the top two</li>
+      </ul>
+      <p>bits of the byte coming back are assumed to be <code>0</code> and are not stored (see <code>SICnINBUFH[INPUT0]</code>). This is a hardware quirk of the receiver, not a bit count the software chooses.</p>
+      <p>The command bytes are <strong>opaque</strong> to the SI. It does not decode <code>CMD</code>; it merely clocks out whatever three bytes are in the output buffer. This is why the same block can drive a standard GameCube controller, a keyboard, a Game Boy Advance on an SI port, or anything else that follows the same framing.</p>
+      <h3>3.2 Framing (duty-cycle / pulse-width modulation)</h3>
+      <p>Communication is <strong>half-duplex</strong> over a <strong>single</strong> line per channel and uses <strong>duty-cycle (pulse-width) modulation</strong> — a data bit's value is carried by how long the line is asserted within a bit cell, not by a level. The framing is big-endian: the <strong>most significant bit</strong> of each byte is sent first.</p>
+      <p>The transmitted frame around each byte is:</p>
+      <table>
+        <tr><th>Phase</th><th>Meaning</th></tr>
+        <tr><td>start bit</td><td>The line is pulled to the "start" polarity (a falling edge) to mark the beginning of a byte</td></tr>
+        <tr><td>8 data bits</td><td>MSB first; each bit is a high pulse whose width encodes a 1 or a 0</td></tr>
+        <tr><td>stop bit</td><td>The line returns to the idle polarity</td></tr>
+        <tr><td>end</td><td>A short end/termination pulse after the last data byte</td></tr>
+        <tr><td>separation</td><td>Passive gap before the next transfer</td></tr>
+      </table>
+      <p>The receiver (in <code>io_SiXfer</code>) samples the line within each bit cell, integrates the number of "high" samples (<code>sidiSum</code>), and <strong>slices</strong> at an accumulated count: if 4 or more of the sample window read high the bit is a <code>1</code>, else a <code>0</code>. The comment in the RTL notes this "favors 1 over 0"; the exact high-pulse duty for a <code>1</code> and a <code>0</code> are chosen so the integrator lands on opposite sides of the slice threshold. The output driver is <strong>inverted</strong> (negative logic), so what the SI drives and what the device sees are complementary — an emulator modelling the electrical level should invert the SI output before summing the pulse window.</p>
+      <p>A byte is clocked out/in at the SI bit rate, derived by <code>io_SiClk</code> (a counter on the Flipper IO clock). The retail divider produces a serial tick of about <strong>2 MHz</strong> (resolution of the sample counter); the exact bit clock depends on the configured divider and thus on the IO clock. An emulator can model a fixed bit time; the SI does not need the precise cycle count to be functionally correct.</p>
+      <h3>3.3 The "0x00 trigger"</h3>
+      <p>The byte value <code>0x00</code> is a protocol-level convention, not a hardware rule. The standard GameCube controller uses command <code>0x00</code> as the <strong>poll/status</strong> request: the host writes <code>CMD = 0x00</code> into <code>SICnOUTBUF</code> and the controller responds with its current button/stick state. Other command values request the other sub-channels (status, origin/calibration, etc.). Because the SI treats <code>CMD</code> as opaque data (§3.1), this "trigger" is realised purely in software — the SI does not interpret <code>0x00</code> specially. The only hardware place <code>0x00 → 0</code> is meaningful is the <strong>length fields</strong> of <code>SICOMCSR</code>, where a value of <code>0x00</code> means <strong>128 bytes</strong> (§6.3), and the receiver's special handling of the first response byte's top two bits.</p>
+      <h2>4. Channels & buffers</h2>
+      <p>Each channel has its own double-buffered output and input registers, plus the shadow buffers that actually talk to the wire. The whole design exists so a poll in progress on the wire cannot be corrupted by a concurrent CPU register access.</p>
+      <h3>4.1 Output buffer (<code>SICnOUTBUF</code>)</h3>
+      <p>The CPU-visible <code>SICnOUTBUF</code> is <code>CMD</code> / <code>OUTPUT0</code> / <code>OUTPUT1</code>. It is <strong>double buffered</strong>: the CPU writes to the visible register, and at the appropriate time the hardware copies it to a hidden shadow buffer (<code>SiOutBuf0</code>) that the shift engine reads. The copy is triggered by setting <code>SISR[WR]</code> (bit 31), which sets <code>WRSTn</code> until every channel has copied. The copy is <strong>suppressed while an output transfer is running</strong> on that channel (<code>SetOutCopyLock</code>), except during a <code>SICOM</code> transfer, so a mid-transfer register write does not corrupt the bytes being shifted out. When <code>SIPOLL[VBCPYn]</code> is set the copy is deferred to the next vertical blank (§5, for 3D shutter glasses).</p>
+      <h3>4.2 Input buffer (<code>SICnINBUFH</code> / <code>SICnINBUFL</code>)</h3>
+      <p>The response is captured by the shift engine into a hidden shadow buffer (<code>SiInBuf0</code>), then copied to the visible <code>SICnINBUFH</code>/<code>SICnINBUFL</code> once the transfer is complete (<code>InCopyGate</code>). The input registers are <strong>double buffered</strong> and use a <strong>locking read sequence</strong>:</p>
+      <ol>
+        <li>The <strong>shadow → visible</strong> copy only happens when the input buffer is **not</li>
+      </ol>
+      <p>locked** (<code>InCopyGate = InCopy &amp;&amp; ~InCopyLock</code>).</p>
+      <ol>
+        <li><strong>Reading <code>SICnINBUFH</code></strong> sets the lock (<code>SetInCopyLock = RdSiInBufHH</code>). From then</li>
+      </ol>
+      <p>on no new data is copied into <code>SICnINBUFH</code>/<code>SICnINBUFL</code>, protecting the CPU's read from being overwritten by a newer poll.</p>
+      <ol>
+        <li><strong>Reading <code>SICnINBUFL</code></strong> clears the lock (<code>ClrInCopyLock = RdSiInBufLL</code>), so</li>
+      </ol>
+      <p>subsequent polls can update the buffer again.</p>
+      <p>In the RTL the lock fires on the read of <code>SICnINBUFH</code> and the unlock on the read of <code>SICnINBUFL</code>; with the 16-bit access model this means a <strong>32-bit</strong> read of <code>SICnINBUFH</code> locks at its high halfword and a <strong>32-bit</strong> read of <code>SICnINBUFL</code> unlocks at its low halfword (§9). The response bytes are big-endian: <code>INPUT0</code> is the most-significant byte of <code>SICnINBUFH</code>, <code>INPUT7</code> the least-significant of <code>SICnINBUFL</code>.</p>
+      <p>The <code>SICnINBUFH</code> high bits carry the per-poll error summary (see §7):</p>
+      <ul>
+        <li><code>ERRSTAT</code> (bit 31) — the <strong>last</strong> poll on this channel had an error.</li>
+        <li><code>ERRLATCH</code> (bit 30) — the OR of the latched error bits in <code>SISR</code> for this channel</li>
+      </ul>
+      <p>(set if <em>any</em> past poll or COM transfer on the channel had an error).</p>
+      <h2>5. Polling</h2>
+      <p>The SI polls controllers automatically so the CPU does not have to poll them by software. <code>io_SiPoll</code> is a shared counter driven by the VI's HSync/VSync.</p>
+      <h3>5.1 Schedule</h3>
+      <p><code>SIPOLL[X]</code> is the poll <strong>interval</strong> — the number of horizontal video lines between polls. <code>SIPOLL[Y]</code> is the number of polls per frame. Polling begins at (and is anchored to) the vertical blank:</p>
+      <ul>
+        <li>At <code>VSync</code> the poll counters are captured (<code>SiPollXV</code>/<code>SiPollYV</code>) and, for each</li>
+      </ul>
+      <p>enabled channel, <code>EnSync[n]</code> is set. Polling starts at the next <code>#VBlank</code> after a channel's enable bit is set — not immediately when the bit is written.</p>
+      <ul>
+        <li>A poll is issued at <code>VSync</code> and then every <code>X</code> HSync lines, up to <code>Y</code> polls per</li>
+      </ul>
+      <p>frame. When <code>Y</code> is reached, polling stops for that frame.</p>
+      <ul>
+        <li>If <code>Y == 0</code>, <strong>no polling occurs</strong> (<code>PollMaster</code> requires <code>Y != 0</code>).</li>
+        <li>Disabling <code>SIPOLL[ENn]</code> stops polling <strong>immediately</strong> after the current</li>
+      </ul>
+      <p>transaction; a channel with <code>ENn = 0</code> is never polled.</p>
+      <p><code>X</code> takes effect after <code>VSync</code> (the captured copy is used), so a change to <code>X</code>/<code>Y</code> during a frame applies from the next blank. The default <code>X = 0x07</code> is the minimum workable interval (limited by how long a single poll takes to complete).</p>
+      <h3>5.2 Per-channel enable / vblank copy</h3>
+      <p><code>SIPOLL[EN0..EN3]</code> enable polling on channels 0–3. <code>ENn</code> gates <strong>only</strong> the automatic poll schedule; it has <strong>no effect</strong> on <code>SICOM</code> transfers — a software COM transfer to a channel runs even if that channel is not enabled for polling.</p>
+      <p><code>SIPOLL[VBCPY0..VBCPY3]</code> (vblank copy) defer the <code>SICnOUTBUF</code> → shadow-buffer copy to the next vertical blank. Normally the copy happens as soon as <code>SISR[WR]</code> is set; with <code>VBCPYn</code> set, the copy is held until <code>VSync</code>. This is used to keep the command timing to <strong>3D LCD shutter glasses</strong> (driven from the VI's output) synchronised to the field boundary, so all channels' commands hit the shutter at the same point in the frame.</p>
+      <h3>5.3 Polling resuming after <code>SICOM</code></h3>
+      <p>After a <code>SICOM</code> transfer completes, the channel's state machine goes to a <code>synchronise</code> state and waits for the next vertical blank before returning to idle. If that channel's <code>SIPOLL[ENn]</code> is set, automatic polling resumes at the next <code>#VBlank</code> (this is what the register documentation states, and what the RTL state machine <code>SI_COM_SYNC</code> implements). A new COM transfer started immediately (a new <code>TSTART</code>) bypasses this wait and runs at once.</p>
+      <h2>6. Communication transfers (<code>SICOM</code>)</h2>
+      <p>Besides polling, each channel can be used for a software-driven, variable-length transfer to/from the <strong>Communication RAM</strong>. This is started by writing <code>SICOMCSR[TSTART] = 1</code> and is the mode used for devices (like a Game Boy Advance) that speak a longer protocol.</p>
+      <h3>6.1 <code>SICOMCSR</code> control/status</h3>
+      <table>
+        <tr><th>Field</th><th>Bits</th><th>Meaning</th></tr>
+        <tr><td><code>TSTART</code></td><td>0</td><td>Write 1 to start a COM transfer; read 1 = pending, 0 = complete</td></tr>
+        <tr><td><code>CHANNEL</code></td><td>2:1</td><td>Which channel (0–3) the transfer uses</td></tr>
+        <tr><td><code>INLNGTH</code></td><td>14:8</td><td>Response (controller→SI) length in bytes; 0 ⇒ 128 bytes</td></tr>
+        <tr><td><code>OUTLNGTH</code></td><td>22:16</td><td>Command (SI→controller) length in bytes; 0 ⇒ 128 bytes</td></tr>
+        <tr><td><code>COMERR</code></td><td>29</td><td>Read-only; 1 if the <strong>last</strong> COM transfer completed in error</td></tr>
+        <tr><td><code>RDSTINT</code></td><td>28</td><td>Read-status interrupt flag (see §8)</td></tr>
+        <tr><td><code>RDSTINTMSK</code></td><td>27</td><td>Read-status interrupt mask/enable</td></tr>
+        <tr><td><code>TCINT</code></td><td>31</td><td>Transfer-complete interrupt status/clear (write 1 to clear)</td></tr>
+        <tr><td><code>TCINTMSK</code></td><td>30</td><td>Transfer-complete interrupt mask/enable</td></tr>
+      </table>
+      <p>The <code>CHANNEL</code>, <code>INLNGTH</code> and <code>TSTART</code> fields live in the <strong>low</strong> halfword; the <code>OUTLNGTH</code> and the interrupt/mask bits live in the <strong>high</strong> halfword (§11).</p>
+      <h3>6.2 Communication RAM (<code>SIRAM</code>)</h3>
+      <p><code>SIRAM</code> is a <strong>128-byte</strong> block of single-port SRAM at <strong><code>0x0C006480</code></strong> (byte offset <code>0x80</code> from the SI base). It is organised as <strong>64 × 16-bit words</strong> (big endian — the high byte at an even address, the low byte at the following odd address). The SI side addresses it byte-wise (8-bit); the CPU side addresses it word-wise (16-bit).</p>
+      <p>It is <strong>not</strong> a normal register and has its own access rules:</p>
+      <ul>
+        <li>It can be accessed by the CPU <strong>or</strong> by the SI (during a COM transfer), **never</li>
+      </ul>
+      <p>both simultaneously**.</p>
+      <ul>
+        <li>During a COM transfer (<code>TSTART</code> active) the <strong>SI has priority</strong>: CPU writes to</li>
+      </ul>
+      <p>the RAM have <strong>no effect</strong> and CPU reads return <strong>undefined/incorrect</strong> data.</p>
+      <ul>
+        <li>Otherwise the CPU reads/writes it as 16-bit words; it is 128 bytes so the</li>
+      </ul>
+      <p>address range is <code>0x0C006480</code>–<code>0x0C0064FF</code>.</p>
+      <ul>
+        <li>The SI drives the RAM from the transfer engine's input/output byte stream, using</li>
+      </ul>
+      <p>a byte-address pointer that is reset to 0 at the start of each transfer.</p>
+      <h3>6.3 Length semantics — the <code>0 ⇒ 128</code> encoding</h3>
+      <p><code>INLNGTH</code>/<code>OUTLNGTH</code> are 7-bit fields. The documented meaning is that a value of <strong><code>0</code> transfers 128 bytes</strong> and <code>1..127</code> transfer that many bytes (the minimum transfer is 1 byte). In the RTL this works because the transfer counter is <strong>7 bits</strong> and is compared against the length field: it counts <code>0..127</code> and wraps to <code>0</code> modulo 128, so a field of <code>0</code> matches only after <strong>128</strong> byte positions — giving exactly a 128-byte transfer. Consequently the effective length is the field value taken modulo 128, and you cannot request a zero-byte transfer.</p>
+      <p>These fields should not be modified while a COM transfer is in progress.</p>
+      <h3>6.4 Transfer sequence</h3>
+      <p>Per channel, a COM transfer is: shift out <code>OUTLNGTH</code> bytes from the RAM (with the data source switched from the output buffer to the RAM), then shift in <code>INLNGTH</code> bytes into the RAM, then set <code>TCINT</code> (and <code>COMERR</code> if any error latched), then wait for <code>VSync</code> before the next poll. The transfer is purely byte-clock driven; the channel is busy for the whole time and a poll on the same channel waits until it is through.</p>
+      <h2>7. Errors</h2>
+      <p>The SI detects transmission faults at the framing level and reports them two ways: per-channel error bits in <code>SISR</code>, and a summary in <code>SICnINBUFH</code>.</p>
+      <h3>7.1 <code>SISR</code> per-channel bits</h3>
+      <p>Each channel occupies 6 bits of <code>SISR</code> (the channel groups are laid out with channel 0 at the high end and channel 3 at the low end, see §11). Within a channel the bit order (from the LSB side) is:</p>
+      <table>
+        <tr><th>Bit in group</th><th>Name</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>UNRUNn</code></td><td>Underrun — the receiver got <strong>fewer</strong> data bits/bytes than expected</td></tr>
+        <tr><td>1</td><td><code>OVRUNn</code></td><td>Overrun — the receiver got <strong>more</strong> data than expected (a bit arrived in the "overrun" window)</td></tr>
+        <tr><td>2</td><td><code>COLLn</code></td><td>Collision — the line was driven to a value that disagreed with what the SI was sending (data or stop collision)</td></tr>
+        <tr><td>3</td><td><code>NOREPn</code></td><td>No response — no device answered within the no-response time-out (also set when no controller is present)</td></tr>
+        <tr><td>4</td><td><code>WRSTn</code></td><td>Write status — the shadow output buffer has not yet been copied from <code>SICnOUTBUF</code></td></tr>
+        <tr><td>5</td><td><code>RDSTn</code></td><td>Read status — new poll data is in the input buffer and has not yet been read</td></tr>
+      </table>
+      <p><code>UNRUN</code>/<code>OVRUN</code>/<code>COLL</code>/<code>NOREP</code> are <strong>latched</strong> and each is cleared by writing a <code>1</code> to its own bit (write-1-to-clear). <code>NOREP</code> staying set is a reliable way to detect an absent controller. <code>RDSTn</code> is set when data is copied into the input buffer and cleared when the CPU reads <code>SICnINBUFH</code>. <code>WRSTn</code> is set when <code>SISR[WR]</code> is written and cleared when the shadow output buffer copy completes.</p>
+      <h3>7.2 <code>SISR[WR]</code> (bit 31)</h3>
+      <p>A single, global <strong>write</strong> bit. Writing <code>1</code> copies all channels' output buffers to their shadows; reading it reports whether the copy is still pending (1 = not copied, 0 = copied). It returns to 0 only when <strong>every</strong> channel has finished copying (<code>WRST0..WRST3</code> all clear).</p>
+      <h3>7.3 <code>SICnINBUFH</code> summary</h3>
+      <p><code>ERRSTAT</code> (bit 31) = the last poll on the channel had an error (refreshed on every poll). <code>ERRLATCH</code> (bit 30) = the OR of the channel's <code>NOREP</code>/<code>COLL</code>/<code>OVRUN</code>/<code>UNRUN</code> in <code>SISR</code>, so it stays set until those bits are individually cleared. It is an "something went wrong since you last looked" flag; read <code>SISR</code> for the specifics.</p>
+      <h3>7.4 <code>SICOMCSR[COMERR]</code></h3>
+      <p><code>COMERR</code> (bit 29) is set when the last <strong>COM transfer</strong> completed with an error on the selected channel; it is read-only and is re-evaluated on each COM completion.</p>
+      <h2>8. Interrupts</h2>
+      <p>The SI produces a <strong>single</strong> interrupt <code>si_piInt</code> to the PI's interrupt controller, aggregated as <strong><code>SIINT</code></strong> — PI <code>INTSR</code> bit 3 (<code>SIINT</code>/<code>SIMSK</code>). The SI only has two interrupt <em>events</em>, and only two mask bits control them:</p>
+      <table>
+        <tr><th>Event</th><th>Flag</th><th>Mask</th><th>Meaning</th></tr>
+        <tr><td>Poll data available</td><td><code>SICOMCSR[RDSTINT]</code></td><td><code>RDSTINTMSK</code></td><td>Set when <strong>any</strong> <code>SISR[RDSTn]</code> is set (a poll completed and new input data is in the buffer); cleared when all <code>RDSTn</code> clear (i.e. the CPU has read every channel's input buffer)</td></tr>
+        <tr><td>COM transfer complete</td><td><code>SICOMCSR[TCINT]</code></td><td><code>TCINTMSK</code></td><td>Set when a COM transfer finishes; <strong>write 1 to clear</strong></td></tr>
+      </table>
+      <p>The actual line is asserted when <code>(TCINT &amp; TCINTMSK) || (RDSTINT &amp; RDSTINTMSK)</code>. The per-channel <code>SISR</code> error bits and <code>COMERR</code> do <strong>not</strong> raise the interrupt on their own; they are status the CPU reads in the handler. Both interrupt flags and both masks reset to 0 (masked), so a freshly powered SI raises no interrupt.</p>
+      <p>The PI masks/aggregates this as <code>SIINT</code>/<code>SIMSK</code> at <code>INTSR</code> bit 3; emulators route <code>si_piInt</code> there (see <a href="processor-interface.html">processor-interface.md</a> §4.1).</p>
+      <h2>9. Register access</h2>
+      <p>Like every Flipper IO register, the SI is reached through the <strong>16-bit</strong> IO register interface. <code>PiData[15:0]</code> is the data, <code>PiAddr[7:1]</code> is the halfword- granular address (the low bit, <code>PiAddr[1]</code>, selects one half of a 32-bit register), and the access is one 2-byte or one 4-byte transfer. There is no 32-bit register port.</p>
+      <ul>
+        <li>A <strong>32-bit</strong> access is split into two 16-bit transfers, <strong>big-endian</strong>: the</li>
+      </ul>
+      <p><strong>high</strong> word is transferred at the base (even) address and the <strong>low</strong> word at base+1 (odd). The read datapath muxes <code>[31:16]</code> for <code>PiAddr[1]=0</code> and <code>[15:0]</code> for <code>PiAddr[1]=1</code>.</p>
+      <ul>
+        <li>Registers are <strong>32-bit</strong> internally, addressed at byte offset <code>index × 4</code>, and</li>
+      </ul>
+      <p>asserted to be 32-bit by the documentation. The byte offsets in §10 are the register base addresses.</p>
+      <h3>9.1 <code>SIRAM</code> and the read-ready handshake</h3>
+      <p><code>SIRAM</code> is not a normal register, and the SI returns its read data one clock after the request. The SI block registers its read-output mux (<code>SiPiData &#48;= SiPiDataMux</code>) and drives <code>SiRamRdy</code> one clock after <code>PiSiSel</code> is asserted, so the whole SI (registers and RAM) is "ready a clock later than other IO". Reads to the RAM region in particular require this ready handshake because the SRAM read data is registered; an emulator should return the RAM/register read value with a one-cycle delay (or otherwise respect the ready signal) rather than returning it in the same cycle as the request. Reads of the RAM while a COM transfer is in progress return undefined data (see §6.2).</p>
+      <h2>10. Register map</h2>
+      <p>Registers are at byte offsets from the SI base <code>0x0C006400</code> (uncached alias <code>0xCC006400</code>). Each register is 32-bit, reached as two 16-bit halves (§9). Offsets are <code>index × 4</code>, where <code>index</code> is the register index used in the FDL/RTL decode (<code>PiAddr[7:2]</code>).</p>
+      <table>
+        <tr><th>Offset</th><th>Name</th><th>R/W</th><th>Description</th></tr>
+        <tr><td><code>0x00</code></td><td><code>SIC0OUTBUF</code></td><td>RW</td><td>Channel 0 command/data out</td></tr>
+        <tr><td><code>0x04</code></td><td><code>SIC0INBUFH</code></td><td>RO</td><td>Channel 0 response, high word (<code>INPUT0</code>–<code>INPUT3</code>, error summary)</td></tr>
+        <tr><td><code>0x08</code></td><td><code>SIC0INBUFL</code></td><td>RO</td><td>Channel 0 response, low word (<code>INPUT4</code>–<code>INPUT7</code>)</td></tr>
+        <tr><td><code>0x0C</code></td><td><code>SIC1OUTBUF</code></td><td>RW</td><td>Channel 1 command/data out</td></tr>
+        <tr><td><code>0x10</code></td><td><code>SIC1INBUFH</code></td><td>RO</td><td>Channel 1 response, high word</td></tr>
+        <tr><td><code>0x14</code></td><td><code>SIC1INBUFL</code></td><td>RO</td><td>Channel 1 response, low word</td></tr>
+        <tr><td><code>0x18</code></td><td><code>SIC2OUTBUF</code></td><td>RW</td><td>Channel 2 command/data out</td></tr>
+        <tr><td><code>0x1C</code></td><td><code>SIC2INBUFH</code></td><td>RO</td><td>Channel 2 response, high word</td></tr>
+        <tr><td><code>0x20</code></td><td><code>SIC2INBUFL</code></td><td>RO</td><td>Channel 2 response, low word</td></tr>
+        <tr><td><code>0x24</code></td><td><code>SIC3OUTBUF</code></td><td>RW</td><td>Channel 3 command/data out</td></tr>
+        <tr><td><code>0x28</code></td><td><code>SIC3INBUFH</code></td><td>RO</td><td>Channel 3 response, high word</td></tr>
+        <tr><td><code>0x2C</code></td><td><code>SIC3INBUFL</code></td><td>RO</td><td>Channel 3 response, low word</td></tr>
+        <tr><td><code>0x30</code></td><td><code>SIPOLL</code></td><td>RW</td><td>Poll schedule (<code>X</code>, <code>Y</code>, per-channel enable, vblank-copy)</td></tr>
+        <tr><td><code>0x34</code></td><td><code>SICOMCSR</code></td><td>RW</td><td>Communication control/status</td></tr>
+        <tr><td><code>0x38</code></td><td><code>SISR</code></td><td>RW</td><td>Per-channel status/error and the global write bit</td></tr>
+        <tr><td><code>0x3C</code></td><td><code>SIEXILK</code></td><td>RW</td><td>EXI 32 MHz clock lock</td></tr>
+        <tr><td><code>0x80</code></td><td><code>SIRAM</code></td><td>RW</td><td>Communication RAM, 128 bytes (64 × 16-bit words)</td></tr>
+      </table>
+      <p>Note that <code>SIRAM</code>'s offset is <code>0x80</code> and its decode is by <code>PiAddr[7]</code> (the RAM region is distinguished from the status/control registers by that bit), not by an even <code>index × 4</code> that continues the list above.</p>
+      <h2>11. Register fields</h2>
+      <p>Real bit positions. Bits are described LSB-first (the first field listed is bit 0) and confirmed against the RTL and the patent-derived <code>HW/IO/si.htm</code> table. <code>-</code> means reserved/unused and reads as 0 unless stated.</p>
+      <h3>11.1 <code>SICnOUTBUF</code> (0x00 / 0x0C / 0x18 / 0x24 — 32-bit, RW)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>23:16</td><td><code>CMD</code></td><td>Command byte, sent first in the command/response packet</td><td>0</td></tr>
+        <tr><td>15:8</td><td><code>OUTPUT0</code></td><td>Second data byte sent (conventionally 0 for a poll-style command)</td><td>0</td></tr>
+        <tr><td>7:0</td><td><code>OUTPUT1</code></td><td>Third data byte sent</td><td>0</td></tr>
+        <tr><td>31:24</td><td>—</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <h3>11.2 <code>SICnINBUFH</code> (0x04 / 0x10 / 0x1C / 0x28 — 32-bit, RO)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>31</td><td><code>ERRSTAT</code></td><td>Last poll on this channel ended in error (0 = no error, 1 = error)</td><td>0</td></tr>
+        <tr><td>30</td><td><code>ERRLATCH</code></td><td>OR of the channel's latched <code>SISR</code> error bits (0 = none, 1 = an error is latched — read <code>SISR</code>)</td><td>0</td></tr>
+        <tr><td>29:24</td><td><code>INPUT0</code></td><td>First response byte — <strong>6 bits</strong>; the top two bits of the byte are assumed 0 and not stored</td><td>0</td></tr>
+        <tr><td>23:16</td><td><code>INPUT1</code></td><td>Second response byte</td><td>0</td></tr>
+        <tr><td>15:8</td><td><code>INPUT2</code></td><td>Third response byte</td><td>0</td></tr>
+        <tr><td>7:0</td><td><code>INPUT3</code></td><td>Fourth response byte</td><td>0</td></tr>
+      </table>
+      <p>Reading this register (its high halfword) sets the input-buffer <strong>lock</strong> (§4.2).</p>
+      <h3>11.3 <code>SICnINBUFL</code> (0x08 / 0x14 / 0x20 / 0x2C — 32-bit, RO)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>31:24</td><td><code>INPUT4</code></td><td>Fifth response byte</td><td>0</td></tr>
+        <tr><td>23:16</td><td><code>INPUT5</code></td><td>Sixth response byte</td><td>0</td></tr>
+        <tr><td>15:8</td><td><code>INPUT6</code></td><td>Seventh response byte</td><td>0</td></tr>
+        <tr><td>7:0</td><td><code>INPUT7</code></td><td>Eighth response byte</td><td>0</td></tr>
+      </table>
+      <p>Reading this register (its low halfword) clears the input-buffer <strong>lock</strong> (§4.2).</p>
+      <h3>11.4 <code>SIPOLL</code> (0x30 — 32-bit, RW)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>25:16</td><td><code>X</code></td><td>Poll interval (HSync lines between polls). Takes effect after <code>VSync</code>. <code>0x07</code> is the minimum</td><td><code>0x07</code></td></tr>
+        <tr><td>15:8</td><td><code>Y</code></td><td>Polls per frame. Takes effect after <code>VSync</code>. <code>0</code> ⇒ no polling</td><td><code>0x00</code></td></tr>
+        <tr><td>7</td><td><code>EN0</code></td><td>Enable polling of channel 0</td><td>0</td></tr>
+        <tr><td>6</td><td><code>EN1</code></td><td>Enable polling of channel 1</td><td>0</td></tr>
+        <tr><td>5</td><td><code>EN2</code></td><td>Enable polling of channel 2</td><td>0</td></tr>
+        <tr><td>4</td><td><code>EN3</code></td><td>Enable polling of channel 3</td><td>0</td></tr>
+        <tr><td>3</td><td><code>VBCPY0</code></td><td>Defer channel 0 output copy until <code>VSync</code> (shutter-glasses sync)</td><td>0</td></tr>
+        <tr><td>2</td><td><code>VBCPY1</code></td><td>Defer channel 1 output copy until <code>VSync</code></td><td>0</td></tr>
+        <tr><td>1</td><td><code>VBCPY2</code></td><td>Defer channel 2 output copy until <code>VSync</code></td><td>0</td></tr>
+        <tr><td>0</td><td><code>VBCPY3</code></td><td>Defer channel 3 output copy until <code>VSync</code></td><td>0</td></tr>
+        <tr><td>31:26</td><td>—</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <h3>11.5 <code>SICOMCSR</code> (0x34 — 32-bit, RW)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>0</td><td><code>TSTART</code></td><td>Write 1 to start a COM transfer; read = 1 while pending, 0 when complete</td><td>0</td></tr>
+        <tr><td>2:1</td><td><code>CHANNEL</code></td><td>Channel for the transfer (0–3)</td><td>0</td></tr>
+        <tr><td>14:8</td><td><code>INLNGTH</code></td><td>Response length in bytes; <code>0</code> ⇒ 128 bytes</td><td>0</td></tr>
+        <tr><td>22:16</td><td><code>OUTLNGTH</code></td><td>Command length in bytes; <code>0</code> ⇒ 128 bytes</td><td>0</td></tr>
+        <tr><td>27</td><td><code>RDSTINTMSK</code></td><td>Read-status interrupt mask (0 = masked, 1 = enabled)</td><td>0</td></tr>
+        <tr><td>28</td><td><code>RDSTINT</code></td><td>Read-status interrupt status/clear — set when any <code>SISR[RDSTn]</code> is set; cleared when all clear</td><td>0</td></tr>
+        <tr><td>29</td><td><code>COMERR</code></td><td>Read-only; 1 if the last COM transfer errored</td><td>0</td></tr>
+        <tr><td>30</td><td><code>TCINTMSK</code></td><td>Transfer-complete interrupt mask (0 = masked, 1 = enabled)</td><td>0</td></tr>
+        <tr><td>31</td><td><code>TCINT</code></td><td>Transfer-complete interrupt status — write 1 to clear</td><td>0</td></tr>
+        <tr><td>26:23,15</td><td>—</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <p>The <strong>low</strong> halfword (bits 0–15) holds <code>TSTART</code>, <code>CHANNEL</code> and <code>INLNGTH</code>; the <strong>high</strong> halfword (bits 16–31) holds <code>OUTLNGTH</code> and the interrupt/mask bits.</p>
+      <h3>11.6 <code>SISR</code> (0x38 — 32-bit, RW)</h3>
+      <p>Per-channel groups; channel 0 is at the <strong>high</strong> side, channel 3 at the <strong>low</strong> side. Within a channel, the group order from the LSB is <code>UNRUN, OVRUN, COLL, NOREP, WRST, RDST</code>.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>31</td><td><code>WR</code></td><td>Global write — write 1 to copy all output buffers; reads 1 until all copied</td><td>0</td></tr>
+        <tr><td>29</td><td><code>RDST0</code></td><td>Read status channel 0 (new input data unread)</td><td>0</td></tr>
+        <tr><td>28</td><td><code>WRST0</code></td><td>Write status channel 0 (output shadow not copied)</td><td>0</td></tr>
+        <tr><td>27</td><td><code>NOREP0</code></td><td>No-response error channel 0 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>26</td><td><code>COLL0</code></td><td>Collision error channel 0 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>25</td><td><code>OVRUN0</code></td><td>Overrun error channel 0 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>24</td><td><code>UNRUN0</code></td><td>Underrun error channel 0 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>21</td><td><code>RDST1</code></td><td>Read status channel 1</td><td>0</td></tr>
+        <tr><td>20</td><td><code>WRST1</code></td><td>Write status channel 1</td><td>0</td></tr>
+        <tr><td>19</td><td><code>NOREP1</code></td><td>No-response channel 1 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>18</td><td><code>COLL1</code></td><td>Collision channel 1 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>17</td><td><code>OVRUN1</code></td><td>Overrun channel 1 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>16</td><td><code>UNRUN1</code></td><td>Underrun channel 1 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>13</td><td><code>RDST2</code></td><td>Read status channel 2</td><td>0</td></tr>
+        <tr><td>12</td><td><code>WRST2</code></td><td>Write status channel 2</td><td>0</td></tr>
+        <tr><td>11</td><td><code>NOREP2</code></td><td>No-response channel 2 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>10</td><td><code>COLL2</code></td><td>Collision channel 2 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>9</td><td><code>OVRUN2</code></td><td>Overrun channel 2 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>8</td><td><code>UNRUN2</code></td><td>Underrun channel 2 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>5</td><td><code>RDST3</code></td><td>Read status channel 3</td><td>0</td></tr>
+        <tr><td>4</td><td><code>WRST3</code></td><td>Write status channel 3</td><td>0</td></tr>
+        <tr><td>3</td><td><code>NOREP3</code></td><td>No-response channel 3 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>2</td><td><code>COLL3</code></td><td>Collision channel 3 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>1</td><td><code>OVRUN3</code></td><td>Overrun channel 3 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>0</td><td><code>UNRUN3</code></td><td>Underrun channel 3 (write 1 to clear)</td><td>0</td></tr>
+        <tr><td>30, 23:22, 15:14, 7:6</td><td>—</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <h3>11.7 <code>SIEXILK</code> (0x3C — 32-bit, RW)</h3>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>31</td><td><code>LOCK</code></td><td>0 = EXI clock unlocked (32 MHz allowed); 1 = EXI 32 MHz clock <strong>locked out</strong></td><td>1</td></tr>
+        <tr><td>30:0</td><td>—</td><td>Reserved</td><td>0</td></tr>
+      </table>
+      <p><code>LOCK</code> drives the <code>Lock32MHz</code> output that prevents the EXI clock from being set to 32 MHz. It resets to <strong>locked</strong> (<code>=1</code>), i.e. bit 31 set, so on a cold start the 32 MHz EXI clock is disallowed until software clears it. (<code>HW/IO/si.htm</code> shows the reset in a form that can be read as <code>0x1</code>; the RTL and FDL put <code>LOCK</code> at bit 31 and reset it to the <em>locked</em> state, so the register value at reset is <code>0x80000000</code>.) The SI shares the EXI/IO clock tree, which is why locking the EXI 32 MHz setting matters to the SI as well.</p>
+      <h3>11.8 <code>SIRAM</code> (offset <code>0x80</code>, 128 bytes)</h3>
+      <p>Not a normal register. Organised as 64 × 16-bit words, big-endian machine words. CPU access is 16-bit only, byte offset <code>0x80 + 2*i</code> for <code>i = 0..63</code>. During a COM transfer the SI owns it. Reset value undefined (SRAM contents). See §6.2 for access rules and the read-ready handshake (§9.1).</p>
+      <h2>12. Emulator notes</h2>
+      <ol>
+        <li><strong>Model four symmetric, independent channels.</strong> Do not share state between channels.</li>
+      </ol>
+      <p>Each channel has its own output buffer, input buffer, error bits and its own transfer state machine. Only the poll counter (<code>SIPOLL</code>) is shared.</p>
+      <ol>
+        <li><strong>Two transfer modes per channel.</strong> A <strong>poll</strong> is a fixed 3-byte output</li>
+      </ol>
+      <p>(<code>CMD</code>,<code>OUTPUT0</code>,<code>OUTPUT1</code>) followed by an 8-byte input. A <strong>COM</strong> transfer uses <code>OUTLNGTH</code>/<code>INLNGTH</code> (modulo 128, see §6.3) and moves data through <code>SIRAM</code>. The SM never mixes the two: a poll ignores the length registers, and a COM transfer does not touch the port input/output buffers.</p>
+      <ol>
+        <li><strong>Length is modulo 128.</strong> Model the transfer byte counter as a 7-bit counter with</li>
+      </ol>
+      <p>a length field; a length of 0 yields a <strong>128-byte</strong> transfer (the counter wraps to 0 and matches). Do not model a 0-byte transfer — it is not expressible.</p>
+      <ol>
+        <li><strong>Framing.</strong> Emit: start bit, 8 data bits <strong>MSB-first</strong>, stop bit, then an end</li>
+      </ol>
+      <p>pulse, then a separation gap. Demodulate the response by integrating the high samples per bit cell and thresholding (≈4 of the window). Since the SI drives its output <strong>inverted</strong>, invert the emitted value on the wire before the controller sees it, and put the inverted value back into your poll integrator.</p>
+      <ol>
+        <li><strong>First response byte is 6 bits.</strong> Capture only 6 bits into <code>INPUT0</code>; the top two</li>
+      </ol>
+      <p>bits of <code>INPUT0</code> are always <code>0</code>. The other 7 input bytes are full 8-bit.</p>
+      <ol>
+        <li><strong>Double-buffering and the lock/unlock sequence.</strong> Keep two sets of buffers:</li>
+      </ol>
+      <p>the CPU-visible registers and the wire-side shadows. Copy output on <code>SISR[WR]</code>, defer to <code>VSync</code> if <code>VBCPYn</code> is set, and suppress the copy while an output transfer is active on that channel (except COM). Copy input to the visible buffer when a poll completes, but only when the input buffer is <strong>not</strong> locked; <strong>lock</strong> on reading <code>SICnINBUFH</code> and <strong>unlock</strong> on reading <code>SICnINBUFL</code>. This is essential for bare correctness — without it a faster poll can overwrite a staler read.</p>
+      <ol>
+        <li><strong>Poll scheduling.</strong> Anchor polling to <code>VSync</code>. Each <code>VSync</code>, capture <code>X</code>/<code>Y</code></li>
+      </ol>
+      <p>and, for each <code>ENn</code> channel, poll at <code>VSync</code> and then every <code>X</code> HSync lines until <code>Y</code> polls have happened (stop early if <code>Y = 0</code>). Disabling <code>ENn</code> stops polling after the current transaction. After a COM transfer, resume polling at the next <code>VSync</code> if <code>ENn</code> is set.</p>
+      <ol>
+        <li><strong>Interrupts.</strong> Only two events: <code>RDSTINT</code> (any channel's input buffer has new</li>
+      </ol>
+      <p>unread data) and <code>TCINT</code> (COM transfer complete). The line is <code>(TCINT&amp;TCINTMSK) || (RDSTINT&amp;RDSTINTMSK)</code>. <code>RDSTINT</code> is cleared implicitly when all <code>RDSTn</code> clear; <code>TCINT</code> is write-1-to-clear. Route this to the PI as <code>SIINT</code> (PI <code>INTSR</code> bit 3 / <code>INTMSK</code> <code>SIMSK</code>). Per-channel error bits and <code>COMERR</code> do not raise the interrupt on their own.</p>
+      <ol>
+        <li><strong>Errors.</strong> Set <code>NOREP</code> after the no-response time-out (no answer → likely no</li>
+      </ol>
+      <p>controller), <code>OVRUN</code> if a data bit appears in the overrun window, <code>UNRUN</code> if the end-of-response never arrives, and <code>COLL</code> if the line disagrees with the value being driven. Latch them; clear each on a write-1 to its bit. <code>NOREP</code> is the convenient "controller absent" test.</p>
+      <ol>
+        <li><strong>SI RAM handshake and ownership.</strong> Return the SI/<code>SIRAM</code> read with a one-cycle</li>
+      </ol>
+      <p>ready (or model <code>SiRamRdy</code>). While a COM transfer runs, the SI owns the RAM: CPU writes are dropped and CPU reads return undefined data. Model <code>SIRAM</code> as 64 16-bit words (128 bytes).</p>
+      <ol>
+        <li><strong>Register width.</strong> <code>SIRAM</code> and the genuine registers are reached via the 16-bit</li>
+      </ol>
+      <p>high-word-first model; emulate a 2-byte or 4-byte access only. Keep <code>SICnINBUFH</code> to 6 bits for <code>INPUT0</code>.</p>
+      <h2>13. References</h2>
+      <ul>
+        <li><code>HW/IO/si.htm</code> — register-level summary and the controller-protocol text</li>
+      </ul>
+      <p>(patent-derived); the bit positions in §11 are cross-checked against it.</p>
+      <ul>
+        <li><code>specs/architecture/peripherals.md</code> — the higher-level EXI/SI and controller</li>
+      </ul>
+      <p>overview. This document is the register-accurate companion; where they differ the RTL wins and the differences are noted here (§9.1, §10).</p>
+      <ul>
+        <li><code>HW/Flipper_ASIC_Block_Diagram.png</code> and <code>HW/IO/ProcessorInterface.md</code> — the SI</li>
+      </ul>
+      <p>within Flipper and the <code>SIINT</code>/<code>SIMSK</code> PI interrupt.</p>
+      <ul>
+        <li><code>RE/OS/osexi.txt</code> — the OS/EXI driver notes for the EXI clock lock that</li>
+      </ul>
+      <p><code>SIEXILK</code> controls.</p>
+      <ul>
+        <li><strong>US Patent 6,609,977</strong> (External interfaces) — the SI register and</li>
+      </ul>
+      <p>controller-interface text used by <code>HW/IO/si.htm</code>.</p>
+      <ul>
+        <li><strong>US Patent 6,811,489</strong> (Serial Interface) — the controller command/response and</li>
+      </ul>
+      <p>duty-cycle modulation description.</p>
+      <ul>
+        <li>Internal SI interface specification and SI-emulation notes (an internal</li>
+      </ul>
+      <p>ATI-oriented description of an SI-compatible controller interface) — used only for cross-checking the framing and the controller protocol; not cited here as a public path.</p>
+      <ul>
+        <li>Internal Flipper register-definition (FDL) and <code>io_Si</code> RTL — the authoritative</li>
+      </ul>
+      <p>source for the bit positions, sub-block structure and register behaviour summarised above.</p>
+      <h3>Note on the source of §11 bit positions</h3>
+      <p>The bit positions in §11 were cross-checked three ways: the FDL register definitions (LSB-first field order), the <code>io_Si.v</code> read datapath and the <code>io_*</code> control registers, and the patent-derived <code>HW/IO/si.htm</code> table. All three agree. The high-level <a href="peripherals.html"><code>peripherals.md</code></a> presents the SI as ordinary 32-bit registers; the accurate model (used here) is the 16-bit high-word-first IO access interface, with <code>SIRAM</code> as a separate 128-byte RAM block that has its own decode and its own ready handshake rather than being a normal status register.</p>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
