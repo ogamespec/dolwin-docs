@@ -23,6 +23,7 @@
       <a href="gekko.html">Gekko</a>
       <a href="flipper.html">Flipper</a>
       <a href="gfx.html" class="active">GFX (Graphics)</a>
+      <a href="command-processor.html">Command Processor</a>
       <a href="video-interface.html">Video Interface</a>
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
@@ -71,10 +72,10 @@
         <tr><td>5</td><td>Pixel engine</td><td><strong>PE</strong></td><td>Colour/Z compare & blend, the EFB, and the EFB→XFB copy / scale / format convert</td><td><code>gfx-pixel-engine</code> <em>(planned)</em></td></tr>
         <tr><td>6</td><td>Video interface</td><td><strong>VI</strong></td><td>Reads the XFB, generates TV timing, horizontal scaler</td><td><a href="video-interface.html">video-interface.md</a></td></tr>
       </table>
-      <blockquote>The <strong>Command Processor (CP)</strong> is deliberately absent from the table above: it is a separate Flipper module that <em>produces</em> the graphics command / vertex stream, not a stage of the pipeline. It is described in §3. The <code>gfx-*</code> subsystem pages listed as <em>planned</em> do not exist yet; this page serves as their index. Each pipeline section below describes the corresponding stage, and the detailed register-level document can later be attached to it.</blockquote>
+      <blockquote>The <strong>Command Processor (CP)</strong> is deliberately absent from the table above: it is a separate Flipper module that <em>produces</em> the graphics command / vertex stream, not a stage of the pipeline. It is summarised in §3 and specified in full (register-level) in <a href="command-processor.html">command-processor.md</a>. The <code>gfx-*</code> subsystem pages listed as <em>planned</em> do not exist yet; this page serves as their index. Each pipeline section below describes the corresponding stage, and the detailed register-level document can later be attached to it.</blockquote>
       <p>The GFX stage that turns the stored image into the on-screen signal is the <strong>VI</strong>, which is specified separately in <a href="video-interface.html">video-interface.md</a>.</p>
       <h2>3. Command processor (CP) — the graphics command source</h2>
-      <p>The <strong>Command Processor (CP)</strong> is a <em>separate</em> Flipper module. It is not a stage of the GFX pipeline; instead it is the <strong>source</strong> of the graphics command and vertex data. The CP reads the command stream, resolves display lists, fetches and caches vertex attributes, and hands the resulting vertex stream to the pipeline. Its output is consumed at the <strong>XF</strong>, which is the entry point for all graphics commands.</p>
+      <p>The <strong>Command Processor (CP)</strong> is a <em>separate</em> Flipper module. It is not a stage of the GFX pipeline; instead it is the <strong>source</strong> of the graphics command and vertex data. The CP reads the command stream, resolves display lists, fetches and caches vertex attributes, and hands the resulting vertex stream to the pipeline. Its output is consumed at the <strong>XF</strong>, which is the entry point for all graphics commands. The register-level CP specification is in <a href="command-processor.html">command-processor.md</a>.</p>
       <p>The CP fetches three kinds of data from main memory through on-chip FIFOs, always in <strong>32-byte</strong> chunks:</p>
       <ul>
         <li><strong>Command stream</strong> — the graphics command list, read from main memory through an on-chip buffer FIFO.</li>
@@ -187,6 +188,7 @@
       <h2>12. Related specifications</h2>
       <ul>
         <li><a href="flipper.html">flipper.md</a> — the Flipper chipset as a whole (northbridge, GPU, DSP, I/O).</li>
+        <li><a href="command-processor.html">command-processor.md</a> — the Flipper module that produces the graphics command / vertex stream (§3).</li>
         <li><a href="processor-interface.html">processor-interface.md</a> — how the Gekko reaches the GFX (PI FIFO, register window, memory map).</li>
         <li><a href="memory-interface.html">memory-interface.md</a> — the arbitrated main-memory path the GFX masters use.</li>
         <li><a href="video-interface.html">video-interface.md</a> — the VI scan-out stage of the pipeline.</li>

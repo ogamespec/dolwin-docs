@@ -68,7 +68,8 @@ and vertex data, and the graphics commands enter the pipeline at the **XF**:
 
 > The **Command Processor (CP)** is deliberately absent from the table above: it is a
 > separate Flipper module that *produces* the graphics command / vertex stream, not a
-> stage of the pipeline. It is described in §3. The `gfx-*` subsystem pages listed as
+> stage of the pipeline. It is summarised in §3 and specified in full (register-level)
+> in [command-processor.md](command-processor.md). The `gfx-*` subsystem pages listed as
 > *planned* do not exist yet; this page serves as their index. Each pipeline section
 > below describes the corresponding stage, and the detailed register-level document can
 > later be attached to it.
@@ -82,7 +83,9 @@ The **Command Processor (CP)** is a *separate* Flipper module. It is not a stage
 the GFX pipeline; instead it is the **source** of the graphics command and vertex
 data. The CP reads the command stream, resolves display lists, fetches and caches
 vertex attributes, and hands the resulting vertex stream to the pipeline. Its output
-is consumed at the **XF**, which is the entry point for all graphics commands.
+is consumed at the **XF**, which is the entry point for all graphics commands. The
+register-level CP specification is in
+[command-processor.md](command-processor.md).
 
 The CP fetches three kinds of data from main memory through on-chip FIFOs, always in
 **32-byte** chunks:
@@ -323,6 +326,7 @@ while the rest of the pipeline state is driven purely through the command FIFO.
 ## 12. Related specifications
 
 - [flipper.md](flipper.md) — the Flipper chipset as a whole (northbridge, GPU, DSP, I/O).
+- [command-processor.md](command-processor.md) — the Flipper module that produces the graphics command / vertex stream (§3).
 - [processor-interface.md](processor-interface.md) — how the Gekko reaches the GFX (PI FIFO, register window, memory map).
 - [memory-interface.md](memory-interface.md) — the arbitrated main-memory path the GFX masters use.
 - [video-interface.md](video-interface.md) — the VI scan-out stage of the pipeline.

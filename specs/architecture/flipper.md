@@ -126,7 +126,8 @@ The dedicated GFX page â€” the pipeline overview and index of its sub-systems â€
   (commands read in 32-byte chunks), a call FIFO for display lists (no nesting), a
   vertex cache and vertex-format fetch. Vertex attributes can come from the stream or
   from arrays in main memory (including fixed-point formats). The CP is not a stage of
-  the graphics pipeline; it is described separately.
+  the graphics pipeline; it is specified separately in
+  [command-processor.md](command-processor.md).
 - **Geometry:** fixed-point math, **8** hardware RGBA light sources with
   diffuse/specular components, angle and distance attenuation, toon shading,
   bump mapping and a 64-entry matrix RAM (plus dual-texture transform).

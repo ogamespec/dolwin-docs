@@ -17,6 +17,7 @@ user-friendly `docs/` folder served on GitHub Pages.
 | IBM Gekko processor | [architecture/gekko.md](architecture/gekko.md) |
 | Flipper chipset | [architecture/flipper.md](architecture/flipper.md) |
 | GFX (Graphics) | [architecture/gfx.md](architecture/gfx.md) |
+| Command Processor (CP) | [architecture/command-processor.md](architecture/command-processor.md) |
 | Video Interface (VI) | [architecture/video-interface.md](architecture/video-interface.md) |
 | Memory Interface (MEM) | [architecture/memory-interface.md](architecture/memory-interface.md) |
 | Processor Interface (PI) | [architecture/processor-interface.md](architecture/processor-interface.md) |

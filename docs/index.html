@@ -27,6 +27,7 @@
       <a href="gekko.html">Gekko</a>
       <a href="flipper.html">Flipper</a>
       <a href="gfx.html">GFX (Graphics)</a>
+      <a href="command-processor.html">Command Processor</a>
       <a href="video-interface.html">Video Interface</a>
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
@@ -90,6 +91,13 @@
         <p>The fixed-function graphics pipeline inside Flipper: command processor and
            FIFOs, transform and lighting, setup/rasterizer, texture unit, texture
            environment, and the pixel engine with its embedded framebuffer.</p>
+      </a>
+      <a class="card" href="command-processor.html">
+        <span class="card-icon" data-glyph="▶"></span>
+        <h3>Command Processor (CP)</h3>
+        <p>The separate Flipper module that reads the graphics command stream and
+           display lists, fetches and caches vertex attributes, and feeds the pipeline
+           at the transform unit (XF).</p>
       </a>
       <a class="card" href="video-interface.html">
         <span class="card-icon" data-glyph="▣"></span>
