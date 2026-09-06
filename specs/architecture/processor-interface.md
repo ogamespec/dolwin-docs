@@ -286,7 +286,7 @@ any masked source is pending, `INT` is asserted low).
 |---|---|---|---|
 | 0 | `PIINT` | `PIMSK` | PI error (bad address/transfer) |
 | 1 | `RSWINT` | `RSWMSK` | Reset switch (warm reset request) |
-| 2 | `DIINT` | `DIMSK` | Disc interface |
+| 2 | `DIINT` | `DIMSK` | Disk interface |
 | 3 | `SIINT` | `SIMSK` | Serial interface |
 | 4 | `EXINT` | `EXMSK` | Expansion interface |
 | 5 | `AIINT` | `AIMSK` | Audio interface |
@@ -475,7 +475,7 @@ The `CONFIG` register at `0x0C00_3024` is the reset control. Bits:
 |---|---|---|
 | 0 | `SYSRSTB` | Write `0` to assert a system reset; write `1` to deassert (it auto-releases after `DURAR` cycles) |
 | 1 | `MEMRSTB` | Write `0` to reset the memory interface; write `1` to release |
-| 2 | `DIRSTB` | Write `0` to reset the disc interface; write `1` to release |
+| 2 | `DIRSTB` | Write `0` to reset the disk interface; write `1` to release |
 | 31:3 | `PICFG` | Reserved / configuration |
 
 `SYSRSTB` behaves as a **pulse**: writing `0` asserts the reset and starts an
@@ -496,7 +496,7 @@ but is **not** re-initialised on a warm (software) reset.
 `MEMRSTB` and `DIRSTB` are **read/write** (their state is readable via `CONFIG`);
 `SYSRSTB` is **write-only** and reads back as `0`. `CONFIG` is initialised on a
 cold reset only. After power-on the memory interface is released automatically
-shortly after reset deasserts, while the disc interface is left asserted until
+shortly after reset deasserts, while the disk interface is left asserted until
 the boot code writes `CONFIG` to release it; once the system reset is deasserted
 by Flipper, DI and memory can only be released by software. On reset deassertion
 Flipper comes out of reset a few cycles before the CPU, so it is ready when the
@@ -610,12 +610,12 @@ Reset / configuration. Bits:
 |---|---|---|---|
 | 0 | `SYSRSTB` | Software reset (write-only; reads `0`) | — (write-only) |
 | 1 | `MEMRSTB` | Memory-interface reset | `1` (released) |
-| 2 | `DIRSTB` | Disc-interface reset | `0` (held until software releases) |
+| 2 | `DIRSTB` | Disk-interface reset | `0` (held until software releases) |
 | 31:3 | `PICFG` | Reserved | `0` |
 
 `SYSRSTB` is write-only and reads as `0`. `MEMRSTB`/`DIRSTB` are R/W and read
 back their state. The memory interface is released automatically shortly after
-power-on, while the disc interface is left asserted until the boot code writes
+power-on, while the disk interface is left asserted until the boot code writes
 `CONFIG` to release it.
 
 ### 9.10 `DURAR` (0x28, 32-bit)
@@ -659,7 +659,7 @@ damage the pads if held for a long time).
 | 11:9 | `EXI2_STR` | Expansion 2 |
 | 14:12 | `EXI1_STR` | Expansion 1 |
 | 17:15 | `EXI0_STR` | Expansion 0 |
-| 20:18 | `DI_STR` | Disc |
+| 20:18 | `DI_STR` | Disk |
 | 23:21 | `VI_STR` | Video |
 | 26:24 | `SD_STR` | Security / decode |
 
@@ -684,7 +684,7 @@ some interfaces can damage the pads if held for a long time). The recommended
 | Interface | Recommended drive |
 |---|---|
 | SDRAM, EXI0–2, SI, AI, VI | 8 mA |
-| Disc (DI), audio streaming (AIS) | 16 mA |
+| Disk (DI), audio streaming (AIS) | 16 mA |
 
 ### 9.13 `CPUDBB` (0x34, 32-bit)
 

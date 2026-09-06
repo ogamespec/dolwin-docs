@@ -22,7 +22,7 @@ user-friendly `docs/` folder served on GitHub Pages.
 | Memory Interface (MEM) | [architecture/memory-interface.md](architecture/memory-interface.md) |
 | Processor Interface (PI) | [architecture/processor-interface.md](architecture/processor-interface.md) |
 | Audio Interface (AI) | [architecture/audio-interface.md](architecture/audio-interface.md) |
-| Disc Interface (DI) | [architecture/disk-interface.md](architecture/disk-interface.md) |
+| Disk Interface (DI) | [architecture/disk-interface.md](architecture/disk-interface.md) |
 | Serial Interface (SI) | [architecture/serial-interface.md](architecture/serial-interface.md) |
 | Expansion Interface (EXI) | [architecture/expansion-interface.md](architecture/expansion-interface.md) |
 | Disk Drive | [architecture/disk-drive.md](architecture/disk-drive.md) |

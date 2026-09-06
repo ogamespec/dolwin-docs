@@ -1,7 +1,7 @@
 # GameCube — Disk Drive
 
 > The GameCube reads games from a proprietary **3" mini-DVD** (Nintendo's
-> "GameCube Game Disc"). The drive itself is an intelligent, command-driven
+> "GameCube Game Disk"). The drive itself is an intelligent, command-driven
 > device built around a small CPU with firmware, developed with Matsushita. It is
 > controlled by the Flipper **Disk Interface (DI)**.
 
@@ -18,7 +18,7 @@
 
 A proprietary copy-protection scheme (unlike the CSS used on standard DVDs)
 combines **non-standard barcodes** with **encryption of the sector data**, which
-the DVD controller decrypts on the fly. The result is that a GameCube disc cannot
+the DVD controller decrypts on the fly. The result is that a GameCube disk cannot
 be read on ordinary PC optical hardware.
 
 ## 2. Drive architecture
@@ -33,7 +33,7 @@ Two interaction modes are exposed by the DI:
 
 1. **Immediate commands** — quick control (stop/start the motor, start a DVD-Audio
    stream, register access, etc.).
-2. **DI DMA** — bulk data transfer between the disc and main memory (the normal
+2. **DI DMA** — bulk data transfer between the disk and main memory (the normal
    way game data and streaming audio are read). All DMA transfers are
    32-byte-aligned.
 

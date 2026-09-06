@@ -11,7 +11,7 @@ The system is built around two large chips on the main CPU board:
 - **Flipper** — the single ASIC that is the northbridge, graphics processor,
   audio DSP and I/O controller for the whole console.
 
-Everything else (main memory, ARAM, the disc drive, the peripherals) hangs off
+Everything else (main memory, ARAM, the disk drive, the peripherals) hangs off
 Flipper.
 
 ## Sections
@@ -30,7 +30,7 @@ Flipper.
 | 10 | Memory Interface (MEM) | [memory-interface.md](memory-interface.md) | arbitration hub & arbiter; all memory masters; queues & write buffering; coherency; MARR protection; the 1T-SRAM "Splash" interface; emulator model |
 | 11 | Processor Interface (PI) | [processor-interface.md](processor-interface.md) | the Gekko 60x bus; 16-bit register access; transfer types/sizes & prefetch; interrupt controller; PI errors; the physical memory map (RAM, EFB, GFX FIFO, boot ROM); Gekko reset; emulator model |
 | 12 | Audio Interface (AI) | [audio-interface.md](audio-interface.md) | the streaming/DVD-audio input, the DSP 32/48 kHz paths & sample-rate converter, the mixed audio output to the DAC, AICR/AIVR/AISCNT/AIIT, AIINT & the audio DMA; emulator model |
-| 13 | Disc Interface (DI) | [disk-interface.md](disk-interface.md) | the drive-command interface: 12-byte command packet, immediate vs DMA mode, the 32-byte-block DMA engine, the break/error protocol, DISR/DICVR/DICMDBUF.., resets & DICONFIG; emulator model |
+| 13 | Disk Interface (DI) | [disk-interface.md](disk-interface.md) | the drive-command interface: 12-byte command packet, immediate vs DMA mode, the 32-byte-block DMA engine, the break/error protocol, DISR/DICVR/DICMDBUF.., resets & DICONFIG; emulator model |
 | 14 | Serial Interface (SI) | [serial-interface.md](serial-interface.md) | the four controller ports: command/response packets, double-buffered OUT/IN buffers, polling (SIPOLL) & communication transfers (SICOMCSR/SIRAM), per-channel errors (SISR), SIEXILK; emulator model |
 | 15 | Expansion Interface (EXI) | [expansion-interface.md](expansion-interface.md) | the three EXI channels & chip-selects, immediate/DMA/ROM transfers, the EXI clock rates, EXI0 boot-ROM descrambler, per-channel CPR/CR/MAR/LEN/DATA; emulator model |
 
@@ -47,7 +47,7 @@ Flipper.
 | Embedded framebuffer | 2 MB EFB (≈640×528) |
 | Texture memory | 512 KB TMEM, max texture 1024×1024 |
 | Audio DSP | 16-bit Macronix, 81 MHz, 8 KB IRAM + 8 KB IROM + 8 KB DRAM + 4 KB DROM |
-| Disc | 3" mini-DVD, 1,459,978,240 bytes, CAV, ~2–3 MB/s |
+| Disk | 3" mini-DVD, 1,459,978,240 bytes, CAV, ~2–3 MB/s |
 | Power | DC 12 V × 3.5 A |
 
 ## Source disciplines

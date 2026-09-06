@@ -9,7 +9,7 @@
 ## 1. Role and connection
 
 Physically, Flipper sits between the Gekko CPU, the main 1T-SRAM, the ARAM SDRAM,
-the disc drive, the audio DAC, the video encoder and every peripheral connector.
+the disk drive, the audio DAC, the video encoder and every peripheral connector.
 It is reached by the CPU only through the Gekko–Flipper bus (32-bit address /
 64-bit data, 162 MHz) and it hosts all of the memory-mapped hardware registers.
 
@@ -56,7 +56,7 @@ does not define this map. The full PI decode is in
 | `0x0C003000` | — | Peripheral Interface (PI) |
 | `0x0C004000` | — | Memory Interface (MI) |
 | `0x0C005000` | — | DSP + Audio + ARAM DMA |
-| `0x0C006000` | — | Disc Interface (DI) |
+| `0x0C006000` | — | Disk Interface (DI) |
 | `0x0C006400` | — | Serial Interface (SI) |
 | `0x0C006800` | — | External Interface (EXI) |
 | `0x0C006C00` | — | Audio Streaming (AIS) |

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GameCube Hardware — Disc Interface (DI)</title>
-  <meta name="description" content="GameCube Disc Interface (DI): the Flipper IO block that drives the intelligent Matsushita mini-DVD drive — the 12-byte command packet, immediate vs DMA mode, the 32-byte-block DMA engine, the break/error protocol, resets, and the full register map. Emulator model." />
+  <title>GameCube Hardware — Disk Interface (DI)</title>
+  <meta name="description" content="GameCube Disk Interface (DI): the Flipper IO block that drives the intelligent Matsushita mini-DVD drive — the 12-byte command packet, immediate vs DMA mode, the 32-byte-block DMA engine, the break/error protocol, resets, and the full register map. Emulator model." />
   <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
   <link rel="stylesheet" href="assets/css/style.css" />
   <link rel="icon" href="assets/favicon.ico" sizes="any" />
@@ -28,8 +28,8 @@
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html">Processor Interface</a>
-      <a href="disk-drive.html">Disc Drive</a>
-      <a href="disk-interface.html" class="active">Disc Interface (DI)</a>
+      <a href="disk-drive.html">Disk Drive</a>
+      <a href="disk-interface.html" class="active">Disk Interface (DI)</a>
       <a href="peripherals.html">Peripherals (EXI & SI)</a>
       <a href="serial-interface.html">Serial Interface (SI)</a>
       <a href="expansion-interface.html">Expansion Interface (EXI)</a>
@@ -41,9 +41,9 @@
 
   <main class="wrap">
     <article>
-      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Disc Interface (DI)</p>
-      <h1>GameCube — Disc Interface (DI)</h1>
-      <blockquote><strong>DI</strong> (Disc Interface) is the block inside the <strong>Flipper</strong> ASIC that connects the console to the GameCube disc drive unit (DDU). The drive is an intelligent, command-driven device with its own microcontroller and firmware, so everything the console "knows" about the disc is sent as a <strong>command packet</strong> over a simple 8-bit, strobed, bidirectional bus. The DI is a register bank plus the sequencing logic that turns a command packet into bus-level handshakes, moves bulk data to/from main memory in 32-byte blocks (DMA), moves small immediate values to/from an on-chip buffer for register-access commands, and raises the DI interrupt to the PI. The physical media, the drive architecture and the DVD-Audio stream are covered separately in <a href="disk-drive.html">disk-drive.md</a> and in the external-interface hardware documentation.</blockquote>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Disk Interface (DI)</p>
+      <h1>GameCube — Disk Interface (DI)</h1>
+      <blockquote><strong>DI</strong> (Disk Interface) is the block inside the <strong>Flipper</strong> ASIC that connects the console to the GameCube disk drive unit (DDU). The drive is an intelligent, command-driven device with its own microcontroller and firmware, so everything the console "knows" about the disk is sent as a <strong>command packet</strong> over a simple 8-bit, strobed, bidirectional bus. The DI is a register bank plus the sequencing logic that turns a command packet into bus-level handshakes, moves bulk data to/from main memory in 32-byte blocks (DMA), moves small immediate values to/from an on-chip buffer for register-access commands, and raises the DI interrupt to the PI. The physical media, the drive architecture and the DVD-Audio stream are covered separately in <a href="disk-drive.html">disk-drive.md</a> and in the external-interface hardware documentation.</blockquote>
       <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation, the Flipper RTL and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a time-out, the exact latitude of a field, or an ambiguity in the original design note — it is called out as such. In every case the RTL is taken as authoritative over the published register descriptions.</p>
       <h2>1. Overview</h2>
       <p>The DI is a <strong>slave</strong> on the Flipper register bus and a <strong>master</strong> on the main-memory interface. It presents one interrupt (<code>di_piInt</code>, aggregated by the PI as <code>DIINT</code>) and drives the pins to the drive. Software never touches the bus directly; it only writes register values and lets the DI sequence the handshake.</p>
@@ -79,9 +79,9 @@
         <tr><td><code>io_dififo</code></td><td>The DMA data staging FIFO — 8 × 64-bit entries, written either from the drive (DVD→memory) or from memory (memory→DVD), read out on the opposite side</td></tr>
         <tr><td><code>io_dibuf</code></td><td>The command + immediate register file — the three 32-bit command buffers (<code>DICMDBUF0..2</code>) and the 32-bit immediate buffer (<code>DIIMMBUF</code>), readable/writable by both the CPU and the DI's device state machine</td></tr>
       </table>
-      <p>Data flow for a <strong>read from disc</strong> (the common case):</p>
+      <p>Data flow for a <strong>read from disk</strong> (the common case):</p>
       <pre><code>drive (DIDD) ──io_didctl──▶ io_dififo ── (32-byte full line) ──io_dimctl──▶ main memory</code></pre>
-      <p>For a <strong>write to disc</strong> the same FIFO is filled from memory by <code>io_dimctl</code> and drained to the drive by <code>io_didctl</code>.</p>
+      <p>For a <strong>write to disk</strong> the same FIFO is filled from memory by <code>io_dimctl</code> and drained to the drive by <code>io_didctl</code>.</p>
       <h3>1.3 Connection to the drive</h3>
       <p>The DI connects to the drive through the <strong>DDU connector (P9)</strong> on the motherboard. The drive is powered (5 V), ground and the DI mains signals plus the separate DVD-Audio pins; <code>MONI</code>/<code>MONOUT</code> on the connector are drive monitor lines not used by the DI itself. Full connector detail is in the external-interface hardware documentation; the signal-level description is in §2.</p>
       <h2>2. External pins / signals</h2>
@@ -94,11 +94,11 @@
         <tr><td><code>DIDSTRB</code></td><td>1</td><td>I</td><td>Device strobe. On a <strong>read</strong> it qualifies <code>DIDD[7:0]</code> (data valid on its rising edge); on a <strong>write</strong> it is a <em>ready</em> line (asserted = drive ready for another byte)</td></tr>
         <tr><td><code>DIERR</code></td><td>1</td><td>I</td><td>Drive error. Edge-triggered; a falling edge from the drive halts the current command and may raise <code>DEINT</code>. The drive deasserts it only after the host sends the next command (typically a request-sense)</td></tr>
         <tr><td><code>DIBRK</code></td><td>1</td><td>I/O</td><td>Break (open-drain, external pull-up). The DI drives it low while idle; to break, the DI releases it (external pull-up raises it) and the <strong>drive</strong> becomes master, then pulses it low and releases — the DI recognises the <strong>rising edge</strong> as the break acknowledge. The DI delays a break until any command packet transfer completes (§3)</td></tr>
-        <tr><td><code>DICOVER</code></td><td>1</td><td>I</td><td>Disc cover switch. <code>1</code> = cover open, <code>0</code> = cover closed</td></tr>
+        <tr><td><code>DICOVER</code></td><td>1</td><td>I</td><td>Disk cover switch. <code>1</code> = cover open, <code>0</code> = cover closed</td></tr>
         <tr><td><code>DIRST</code></td><td>1</td><td>O</td><td>Drive reset. Not generated by the DI; driven from the PI general/reset register. Asserting it resets the drive</td></tr>
       </table>
       <h3>2.1 DVD-Audio (AIS) signals</h3>
-      <p>Streamed disc audio is carried on separate pins into Flipper and crosses into the Audio Interface (AI); they are not part of the DI command/data path, but are listed here because they are physically part of the drive interface.</p>
+      <p>Streamed disk audio is carried on separate pins into Flipper and crosses into the Audio Interface (AI); they are not part of the DI command/data path, but are listed here because they are physically part of the drive interface.</p>
       <table>
         <tr><th>Signal</th><th>Dir</th><th>Description</th></tr>
         <tr><td><code>AISD</code></td><td>I</td><td>Serial left/right audio bitstream from the drive, synchronised to the rising edge of <code>AISCLK</code></td></tr>
@@ -107,7 +107,7 @@
       </table>
       <p>The Audio Interface resamples the DVD-Audio stream to the mixer's sample rate; see the AI documentation and <a href="disk-drive.html">disk-drive.md</a>.</p>
       <h2>3. Drive command model</h2>
-      <p>Software drives the disc controller entirely through the register file. A command is a <strong>12-byte packet</strong> held in <code>DICMDBUF0</code> (bytes 0–3), <code>DICMDBUF1</code> (bytes 4–7) and <code>DICMDBUF2</code> (bytes 8–11). The packet is sent over <code>DIDD[7:0]</code>, <strong>high byte first</strong> — the most-significant byte of <code>DICMDBUF0</code> is byte 0 and is the first one transmitted. In practice byte 0 is the opcode.</p>
+      <p>Software drives the disk controller entirely through the register file. A command is a <strong>12-byte packet</strong> held in <code>DICMDBUF0</code> (bytes 0–3), <code>DICMDBUF1</code> (bytes 4–7) and <code>DICMDBUF2</code> (bytes 8–11). The packet is sent over <code>DIDD[7:0]</code>, <strong>high byte first</strong> — the most-significant byte of <code>DICMDBUF0</code> is byte 0 and is the first one transmitted. In practice byte 0 is the opcode.</p>
       <p>Issuing a command consists of:</p>
       <ol>
         <li>Writing the 12-byte packet into <code>DICMDBUF0..2</code>.</li>
@@ -123,7 +123,7 @@
       <ul>
         <li><strong>DMA mode</strong> (<code>DMA</code>=1): data is streamed to/from <strong>main memory</strong> in 32-byte</li>
       </ul>
-      <p>blocks through <code>io_dimctl</code>. <code>DIMAR</code>/<code>DILENGTH</code> name the memory operand. This is the normal bulk data path (game data reads, disc-ID reads, inquiries).</p>
+      <p>blocks through <code>io_dimctl</code>. <code>DIMAR</code>/<code>DILENGTH</code> name the memory operand. This is the normal bulk data path (game data reads, disk-ID reads, inquiries).</p>
       <ul>
         <li><strong>Immediate mode</strong> (<code>DMA</code>=0): data is transferred to/from the on-chip</li>
       </ul>
@@ -191,8 +191,8 @@
       <table>
         <tr><th>Opcode</th><th>Command</th><th>Data</th><th>Packet / notes</th></tr>
         <tr><td><code>0x12</code></td><td>Inquiry</td><td>DMA</td><td>Read the drive manufacturer info (<code>DVDDriveInfo</code> — revision, device code, release date). <code>CMDBUF2</code> = length, <code>MAR</code>/<code>LEN</code> = destination, <code>CR = DMA | TSTART</code></td></tr>
-        <tr><td><code>0xA8</code></td><td>Read</td><td>DMA</td><td>Read disc data. <code>subcmd</code> (<code>CMDBUF3</code>), <code>CMDBUF1 = offset &#48;&#48; 2</code>, <code>CMDBUF2</code> = byte length, <code>MAR</code>/<code>LEN</code> = destination, <code>CR = DMA | TSTART</code></td></tr>
-        <tr><td><code>0xA8</code> sub <code>0x40</code></td><td>Read disc ID</td><td>DMA</td><td>Read the 32-byte disc header (<code>DVDDiskID</code>) from the start of the disc; otherwise the same as <code>0xA8</code></td></tr>
+        <tr><td><code>0xA8</code></td><td>Read</td><td>DMA</td><td>Read disk data. <code>subcmd</code> (<code>CMDBUF3</code>), <code>CMDBUF1 = offset &#48;&#48; 2</code>, <code>CMDBUF2</code> = byte length, <code>MAR</code>/<code>LEN</code> = destination, <code>CR = DMA | TSTART</code></td></tr>
+        <tr><td><code>0xA8</code> sub <code>0x40</code></td><td>Read disk ID</td><td>DMA</td><td>Read the 32-byte disk header (<code>DVDDiskID</code>) from the start of the disk; otherwise the same as <code>0xA8</code></td></tr>
         <tr><td><code>0xAB</code></td><td>Seek</td><td>none</td><td>Move the pickup to the sector containing <code>offset</code>. <code>CMDBUF1 = offset &#48;&#48; 2</code>, <code>CR = TSTART</code></td></tr>
         <tr><td><code>0xE0</code></td><td>Request error</td><td>none</td><td>Retrieve the last drive error / sense status. <code>CR = TSTART</code></td></tr>
         <tr><td><code>0xE1</code></td><td>DVD audio stream</td><td>none</td><td>Start/config a DVD-Audio stream. <code>subcmd</code> selects the stream, <code>CMDBUF1 = offset &#48;&#48; 2</code>, <code>CMDBUF2</code> = length, <code>CR = TSTART</code></td></tr>
@@ -200,7 +200,7 @@
         <tr><td><code>0xE3</code></td><td>Stop motor</td><td>none</td><td>Stop the spindle. <code>CR = TSTART</code></td></tr>
         <tr><td><code>0xE4</code></td><td>Audio buffer config</td><td>none</td><td>Configure the streaming-audio buffer: <code>0xE4000000 | (enable ? 0x1000 : 0) | size</code>; low nibble of <code>size</code> = buffer size (≤ 16), high nibble = trigger (0–2), the <code>0x1000</code> bit sets the enable flag. <code>CR = TSTART</code></td></tr>
       </table>
-      <p>The <code>0xA8</code> <strong>read</strong> sub-command is <code>CMDBUF3</code> (bits <code>[7:0]</code> of <code>DICMDBUF0</code>); the usual value is <code>0x00</code> for a normal data read and <code>0x40</code> for the disc-ID read. <code>DMA</code> commands are initiated with <code>CR = DMA | TSTART</code>; control commands with <code>CR = TSTART</code> only.</p>
+      <p>The <code>0xA8</code> <strong>read</strong> sub-command is <code>CMDBUF3</code> (bits <code>[7:0]</code> of <code>DICMDBUF0</code>); the usual value is <code>0x00</code> for a normal data read and <code>0x40</code> for the disk-ID read. <code>DMA</code> commands are initiated with <code>CR = DMA | TSTART</code>; control commands with <code>CR = TSTART</code> only.</p>
       <p>Address/alignment constraints enforced by the driver (and expected by the drive) are worth modelling: the <code>offset</code> is byte-granular but must be a multiple of 4 and is transmitted as <code>offset &#48;&#48; 2</code> in <code>CMDBUF1</code>; the data <code>length</code> must be a multiple of 32 (one DMA block) and is given as a byte count; the destination address in <code>DIMAR</code> must be 32-byte aligned. An <code>0xA8</code> offset beyond the media, or an unsupported sub-command, is reported back through the drive-error interrupt rather than through the register interface.</p>
       <h2>4. DMA transfers</h2>
       <p><code>io_dimctl</code> is the DMA engine. It is a bus master on the main-memory interface and transfers data in <strong>32-byte (cache-line) transactions</strong>, independent of the requested length. It keeps a <strong>double buffer</strong> so the drive side and the memory side can proceed independently; on a DVD→memory transfer the FIFO is filled by the device state machine and drained a full line at a time to memory, on a memory→DVD transfer the buffers are filled from memory and drained to the FIFO.</p>
@@ -230,7 +230,7 @@
       <p>The length register updates as blocks complete. If a DMA transfer is interrupted by a <strong>break</strong>, an <strong>error</strong>, or a <strong>soft reset</strong>, the blocks that did not complete are not counted, so <code>DILENGTH</code> holds the amount <strong>left</strong> to transfer when the transfer was aborted. This lets software resume or account for the partial transfer. (This is the RTL behaviour; the published description states the same thing.)</p>
       <h2>5. Resets & config</h2>
       <h3>5.1 DI reset (<code>DIRST</code> / PI <code>CONFIG</code>)</h3>
-      <p>The drive reset (<code>DIRST</code>) is <strong>not</strong> driven by the DI itself — it comes from the PI general/reset register. <code>CONFIG[2]</code> (<code>DIRSTB</code>) at <code>0x0C003024</code> is the disc-interface reset control: writing <code>0</code> asserts reset, writing <code>1</code> releases it. <code>DIRSTB</code> is read/write (its state is readable via <code>CONFIG</code>) and is <strong>left asserted at power-on until the boot code writes <code>CONFIG</code> to release it</strong>, in contrast to the memory interface which is released automatically shortly after power-up. The DI asserts <code>DIRST</code> to the drive while <code>DIRSTB</code> is in its reset state. Asserting the system-reset bit (<code>CONFIG[0]</code>/<code>SYSRSTB</code>) also pulses <code>DIRSTB</code>. See the <a href="processor-interface.html">processor-interface spec</a> §7.2 for the CONFIG model.</p>
+      <p>The drive reset (<code>DIRST</code>) is <strong>not</strong> driven by the DI itself — it comes from the PI general/reset register. <code>CONFIG[2]</code> (<code>DIRSTB</code>) at <code>0x0C003024</code> is the disk-interface reset control: writing <code>0</code> asserts reset, writing <code>1</code> releases it. <code>DIRSTB</code> is read/write (its state is readable via <code>CONFIG</code>) and is <strong>left asserted at power-on until the boot code writes <code>CONFIG</code> to release it</strong>, in contrast to the memory interface which is released automatically shortly after power-up. The DI asserts <code>DIRST</code> to the drive while <code>DIRSTB</code> is in its reset state. Asserting the system-reset bit (<code>CONFIG[0]</code>/<code>SYSRSTB</code>) also pulses <code>DIRSTB</code>. See the <a href="processor-interface.html">processor-interface spec</a> §7.2 for the CONFIG model.</p>
       <h3>5.2 DI configuration latch (<code>DICONFIG</code>)</h3>
       <p>At reset the DI <strong>latches the state of the <code>DIDD[7:0]</code> bus</strong> into the read-only <code>DICONFIG</code> register (8-bit <code>CONFIG</code> field in bits [7:0]). The latches sample the bus while <code>resetb</code> is asserted and hold the value. The configuration is set by the board's strapping on the data bus; currently <strong>only bit 0 is meaningful</strong> — <code>DIDD[0]</code> selects whether the boot-ROM <strong>scramble</strong> is disabled. Other bits are reserved.</p>
       <h2>6. Interrupts</h2>
@@ -240,7 +240,7 @@
         <tr><td><code>DISR[BRKINT]</code> (6)</td><td><code>DISR[BRKINTMSK]</code> (5)</td><td>Break completed (break acknowledge received from the drive)</td></tr>
         <tr><td><code>DISR[TCINT]</code> (4)</td><td><code>DISR[TCINTMSK]</code> (3)</td><td>Transfer complete (DMA or immediate transfer finished)</td></tr>
         <tr><td><code>DISR[DEINT]</code> (2)</td><td><code>DISR[DEINTMSK]</code> (1)</td><td>Drive error (<code>DIERR</code> asserted)</td></tr>
-        <tr><td><code>DICVR[CVRINT]</code> (2)</td><td><code>DICVR[CVRINTMSK]</code> (1)</td><td>Disc cover closed</td></tr>
+        <tr><td><code>DICVR[CVRINT]</code> (2)</td><td><code>DICVR[CVRINTMSK]</code> (1)</td><td>Disk cover closed</td></tr>
       </table>
       <h3>6.1 Aggregation and masking</h3>
       <p><code>di_piInt</code> is the OR of the four <code>(status &amp; mask)</code> pairs:</p>
@@ -406,13 +406,13 @@
       <ul>
         <li><code>specs/architecture/processor-interface.md</code> — §3 register access (16-bit</li>
       </ul>
-      <p>model), §4 interrupts (<code>DIINT</code> is INTSR bit 2), §7.2 <code>CONFIG[2]</code> <code>DIRSTB</code> disc-interface reset, and the PI error model for the IO register space.</p>
+      <p>model), §4 interrupts (<code>DIINT</code> is INTSR bit 2), §7.2 <code>CONFIG[2]</code> <code>DIRSTB</code> disk-interface reset, and the PI error model for the IO register space.</p>
       <ul>
         <li><code>RE/DVD/DVDLow.c</code> — system low-level drive command routines (command-packet</li>
       </ul>
       <p>layout, immediate/DMA start, break, error/interrupt handling, cover handling; the <code>0x3024</code> reset-register usage).</p>
       <ul>
-        <li><code>RE/DVD/dvdfs.txt</code> — disc filesystem / command-block notes.</li>
+        <li><code>RE/DVD/dvdfs.txt</code> — disk filesystem / command-block notes.</li>
         <li><strong>US Patent 6,609,977</strong> (External Interfaces) — the DI signal and register</li>
       </ul>
       <p>behaviour, break protocol, and immediate/DMA/register-access modes.</p>

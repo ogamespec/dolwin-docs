@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nintendo GameCube — Hardware Specifications</title>
-  <meta name="description" content="Architectural overview and specifications of the Nintendo GameCube hardware: Gekko CPU, Flipper chipset, memory, disc drive and peripherals." />
+  <meta name="description" content="Architectural overview and specifications of the Nintendo GameCube hardware: Gekko CPU, Flipper chipset, memory, disk drive and peripherals." />
   <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
   <link rel="stylesheet" href="assets/css/style.css" />
   <link rel="icon" href="assets/favicon.ico" sizes="any" />
@@ -32,8 +32,8 @@
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html">Processor Interface</a>
-      <a href="disk-drive.html">Disc Drive</a>
-      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="disk-drive.html">Disk Drive</a>
+      <a href="disk-interface.html">Disk Interface (DI)</a>
       <a href="peripherals.html">Peripherals</a>
       <a href="serial-interface.html">Serial Interface (SI)</a>
       <a href="expansion-interface.html">Expansion Interface (EXI)</a>
@@ -53,7 +53,7 @@
       <h1>Nintendo GameCube Hardware</h1>
       <p class="lead">
         An architectural overview of the retail <strong>HW2 (Dolphin)</strong> board —
-        the Gekko CPU, the Flipper chipset, the memory subsystem, the disc drive and
+        the Gekko CPU, the Flipper chipset, the memory subsystem, the disk drive and
         the peripheral interfaces — gathered from the hardware documentation, chip
         RTL and reverse-engineering sources in this repository.
       </p>
@@ -65,7 +65,7 @@
         <span class="card-icon" data-glyph="▦"></span>
         <h3>Motherboard &amp; Connectors</h3>
         <p>Board layout, the 162&nbsp;MHz system bus, Flipper device pins, and the
-           disc-drive / peripheral connector signal maps.</p>
+           disk-drive / peripheral connector signal maps.</p>
       </a>
       <a class="card" href="clock-generator.html">
         <span class="card-icon" data-glyph="◷"></span>
@@ -125,13 +125,13 @@
       </a>
       <a class="card" href="disk-drive.html">
         <span class="card-icon" data-glyph="⌿"></span>
-        <h3>Disc Drive</h3>
+        <h3>Disk Drive</h3>
         <p>The intelligent Matsushita 3" mini-DVD drive: media, copy protection,
            DI interface, signals and streamed DVD audio.</p>
       </a>
       <a class="card" href="disk-interface.html">
         <span class="card-icon" data-glyph="⌿"></span>
-        <h3>Disc Interface (DI)</h3>
+        <h3>Disk Interface (DI)</h3>
         <p>The Flipper drive-command block: the 12-byte command packet, immediate
            versus DMA mode, the 32-byte-block DMA engine and the break/error protocol.</p>
       </a>
@@ -165,7 +165,7 @@
         <div class="stat"><b>2 MB</b><span>Embedded framebuffer</span></div>
         <div class="stat"><b>1.3 GB/s</b><span>Bus bandwidth</span></div>
         <div class="stat"><b>81 MHz</b><span>Audio DSP &amp; ARAM</span></div>
-        <div class="stat"><b>1.46 GB</b><span>Disc capacity</span></div>
+        <div class="stat"><b>1.46 GB</b><span>Disk capacity</span></div>
       </div>
     </section>
   </main>

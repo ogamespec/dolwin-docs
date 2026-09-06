@@ -28,8 +28,8 @@
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html" class="active">Processor Interface</a>
-      <a href="disk-drive.html">Disc Drive</a>
-      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="disk-drive.html">Disk Drive</a>
+      <a href="disk-interface.html">Disk Interface (DI)</a>
       <a href="peripherals.html">Peripherals (EXI & SI)</a>
       <a href="serial-interface.html">Serial Interface (SI)</a>
       <a href="expansion-interface.html">Expansion Interface (EXI)</a>
@@ -213,7 +213,7 @@
         <tr><th>Bit</th><th><code>INTSR</code></th><th><code>INTMSK</code></th><th>Source</th></tr>
         <tr><td>0</td><td><code>PIINT</code></td><td><code>PIMSK</code></td><td>PI error (bad address/transfer)</td></tr>
         <tr><td>1</td><td><code>RSWINT</code></td><td><code>RSWMSK</code></td><td>Reset switch (warm reset request)</td></tr>
-        <tr><td>2</td><td><code>DIINT</code></td><td><code>DIMSK</code></td><td>Disc interface</td></tr>
+        <tr><td>2</td><td><code>DIINT</code></td><td><code>DIMSK</code></td><td>Disk interface</td></tr>
         <tr><td>3</td><td><code>SIINT</code></td><td><code>SIMSK</code></td><td>Serial interface</td></tr>
         <tr><td>4</td><td><code>EXINT</code></td><td><code>EXMSK</code></td><td>Expansion interface</td></tr>
         <tr><td>5</td><td><code>AIINT</code></td><td><code>AIMSK</code></td><td>Audio interface</td></tr>
@@ -328,13 +328,13 @@
         <tr><th>Bit</th><th>Field</th><th>Meaning</th></tr>
         <tr><td>0</td><td><code>SYSRSTB</code></td><td>Write <code>0</code> to assert a system reset; write <code>1</code> to deassert (it auto-releases after <code>DURAR</code> cycles)</td></tr>
         <tr><td>1</td><td><code>MEMRSTB</code></td><td>Write <code>0</code> to reset the memory interface; write <code>1</code> to release</td></tr>
-        <tr><td>2</td><td><code>DIRSTB</code></td><td>Write <code>0</code> to reset the disc interface; write <code>1</code> to release</td></tr>
+        <tr><td>2</td><td><code>DIRSTB</code></td><td>Write <code>0</code> to reset the disk interface; write <code>1</code> to release</td></tr>
         <tr><td>31:3</td><td><code>PICFG</code></td><td>Reserved / configuration</td></tr>
       </table>
       <p><code>SYSRSTB</code> behaves as a <strong>pulse</strong>: writing <code>0</code> asserts the reset and starts an internal <strong>up-counter</strong> from 0; when it reaches the value in <strong><code>PIRDR</code></strong> the system reset is released automatically. Asserting <code>SYSRSTB</code> also asserts <code>MEMRSTB</code> and <code>DIRSTB</code> (so DI and the memory interface are reset with the system). Writing <code>1</code> to <code>CONFIG[0]</code> releases the system reset early.</p>
       <p>There are therefore <strong>three</strong> software-initiated resets — whole system, DI only, and memory only — all driven by bits in <code>CONFIG</code>. Software reset does not modify <code>PIRDR</code>: its value is set on power-on reset and left untouched by a warm reset.</p>
       <p><code>PIRDR</code> (<code>0x0C00_3028</code>, <code>[9:0]</code>) selects the reset duration in CPU cycles; its power-on reset value is <code>0x1FF</code> (511 cycles). Setting a larger value keeps the system reset asserted longer. <code>PIRDR</code> is initialised on <strong>cold</strong> (power-on) reset but is <strong>not</strong> re-initialised on a warm (software) reset.</p>
-      <p><code>MEMRSTB</code> and <code>DIRSTB</code> are <strong>read/write</strong> (their state is readable via <code>CONFIG</code>); <code>SYSRSTB</code> is <strong>write-only</strong> and reads back as <code>0</code>. <code>CONFIG</code> is initialised on a cold reset only. After power-on the memory interface is released automatically shortly after reset deasserts, while the disc interface is left asserted until the boot code writes <code>CONFIG</code> to release it; once the system reset is deasserted by Flipper, DI and memory can only be released by software. On reset deassertion Flipper comes out of reset a few cycles before the CPU, so it is ready when the CPU starts issuing bus requests.</p>
+      <p><code>MEMRSTB</code> and <code>DIRSTB</code> are <strong>read/write</strong> (their state is readable via <code>CONFIG</code>); <code>SYSRSTB</code> is <strong>write-only</strong> and reads back as <code>0</code>. <code>CONFIG</code> is initialised on a cold reset only. After power-on the memory interface is released automatically shortly after reset deasserts, while the disk interface is left asserted until the boot code writes <code>CONFIG</code> to release it; once the system reset is deasserted by Flipper, DI and memory can only be released by software. On reset deassertion Flipper comes out of reset a few cycles before the CPU, so it is ready when the CPU starts issuing bus requests.</p>
       <h3>7.3 GFX reset</h3>
       <p><code>gfxrstb</code> is derived by PI as <code>~(PIABT)</code> AND <code>Flipper_RstB</code>. It is normally asserted high; it is pulled low (GFX held in reset) when either the whole Flipper is reset or the <code>PIABT</code> (CP abort) bit is set.</p>
       <h3>7.4 The reset switch (<code>RSWINT</code>)</h3>
@@ -402,10 +402,10 @@
         <tr><th>Bits</th><th>Field</th><th>Description</th><th>After power-on</th></tr>
         <tr><td>0</td><td><code>SYSRSTB</code></td><td>Software reset (write-only; reads <code>0</code>)</td><td>— (write-only)</td></tr>
         <tr><td>1</td><td><code>MEMRSTB</code></td><td>Memory-interface reset</td><td><code>1</code> (released)</td></tr>
-        <tr><td>2</td><td><code>DIRSTB</code></td><td>Disc-interface reset</td><td><code>0</code> (held until software releases)</td></tr>
+        <tr><td>2</td><td><code>DIRSTB</code></td><td>Disk-interface reset</td><td><code>0</code> (held until software releases)</td></tr>
         <tr><td>31:3</td><td><code>PICFG</code></td><td>Reserved</td><td><code>0</code></td></tr>
       </table>
-      <p><code>SYSRSTB</code> is write-only and reads as <code>0</code>. <code>MEMRSTB</code>/<code>DIRSTB</code> are R/W and read back their state. The memory interface is released automatically shortly after power-on, while the disc interface is left asserted until the boot code writes <code>CONFIG</code> to release it.</p>
+      <p><code>SYSRSTB</code> is write-only and reads as <code>0</code>. <code>MEMRSTB</code>/<code>DIRSTB</code> are R/W and read back their state. The memory interface is released automatically shortly after power-on, while the disk interface is left asserted until the boot code writes <code>CONFIG</code> to release it.</p>
       <h3>9.10 <code>DURAR</code> (0x28, 32-bit)</h3>
       <p>Software-reset duration. <code>PIRDR[9:0]</code> = number of CPU cycles the <code>SYSRSTB</code> pulse is held. Reset <code>0x1FF</code> (511). The field was widened to 10 bits to allow up to 1024 cycles.</p>
       <h3>9.11 <code>CHIPID</code> (0x2C, 32-bit, read-only)</h3>
@@ -434,7 +434,7 @@
         <tr><td>11:9</td><td><code>EXI2_STR</code></td><td>Expansion 2</td></tr>
         <tr><td>14:12</td><td><code>EXI1_STR</code></td><td>Expansion 1</td></tr>
         <tr><td>17:15</td><td><code>EXI0_STR</code></td><td>Expansion 0</td></tr>
-        <tr><td>20:18</td><td><code>DI_STR</code></td><td>Disc</td></tr>
+        <tr><td>20:18</td><td><code>DI_STR</code></td><td>Disk</td></tr>
         <tr><td>23:21</td><td><code>VI_STR</code></td><td>Video</td></tr>
         <tr><td>26:24</td><td><code>SD_STR</code></td><td>Security / decode</td></tr>
       </table>
@@ -454,7 +454,7 @@
       <table>
         <tr><th>Interface</th><th>Recommended drive</th></tr>
         <tr><td>SDRAM, EXI0–2, SI, AI, VI</td><td>8 mA</td></tr>
-        <tr><td>Disc (DI), audio streaming (AIS)</td><td>16 mA</td></tr>
+        <tr><td>Disk (DI), audio streaming (AIS)</td><td>16 mA</td></tr>
       </table>
       <h3>9.13 <code>CPUDBB</code> (0x34, 32-bit)</h3>
       <p>CPU dead-bus-cycle / bus-timing control. Bit 0 = <code>DBB</code>. Reset <code>0</code>. It selects whether the CPU-side transfer acknowledge follows the normal 60x protocol (<code>DBB = 0</code>) or omits the dead-bus (turnaround) cycle (<code>DBB = 1</code>). It is generally left <code>0</code> and is only used by low-level Flipper bring-up.</p>

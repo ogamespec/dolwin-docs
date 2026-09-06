@@ -28,8 +28,8 @@
       <a href="audio-interface.html" class="active">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html">Processor Interface</a>
-      <a href="disk-drive.html">Disc Drive</a>
-      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="disk-drive.html">Disk Drive</a>
+      <a href="disk-interface.html">Disk Interface (DI)</a>
       <a href="peripherals.html">Peripherals (EXI & SI)</a>
       <a href="serial-interface.html">Serial Interface (SI)</a>
       <a href="expansion-interface.html">Expansion Interface (EXI)</a>
@@ -43,13 +43,13 @@
     <article>
       <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Audio Interface (AI)</p>
       <h1>GameCube — Audio Interface (AI)</h1>
-      <blockquote><strong>AI</strong> (the Audio Interface) is the block inside the <strong>Flipper</strong> ASIC that sits between the audio DSP, the disc-drive auxiliary/streaming audio path and the external stereo audio DAC. It owns the programmer-visible <strong>streaming audio-control registers</strong> at <code>0x0C006C00</code>, converts the streamed audio and the DSP output into a single 16-bit stereo sample stream, and serialises that stream out to the DAC. The main-memory-to-FIFO <strong>audio DMA</strong> that actually feeds the AI is a separate controller in the DSP/audio register space — it is controlled from the <code>0x0C005030</code>-area registers and is described here only to keep the two sides of the audio path distinct.</blockquote>
+      <blockquote><strong>AI</strong> (the Audio Interface) is the block inside the <strong>Flipper</strong> ASIC that sits between the audio DSP, the disk-drive auxiliary/streaming audio path and the external stereo audio DAC. It owns the programmer-visible <strong>streaming audio-control registers</strong> at <code>0x0C006C00</code>, converts the streamed audio and the DSP output into a single 16-bit stereo sample stream, and serialises that stream out to the DAC. The main-memory-to-FIFO <strong>audio DMA</strong> that actually feeds the AI is a separate controller in the DSP/audio register space — it is controlled from the <code>0x0C005030</code>-area registers and is described here only to keep the two sides of the audio path distinct.</blockquote>
       <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation, the Flipper RTL and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a self-clearing pulse, the exact effect of a mode flag, the width of a counter — it is called out as such.</p>
       <h2>1. Overview</h2>
       <p>The AI is the output stage of the console's audio path. It brings together three inputs:</p>
       <ul>
         <li>the <strong>DSP</strong> left/right sample stream (<code>dsp_ioL</code> / <code>dsp_ioR</code>),</li>
-        <li>the <strong>DVD / auxiliary streaming</strong> serial input from the disc drive</li>
+        <li>the <strong>DVD / auxiliary streaming</strong> serial input from the disk drive</li>
       </ul>
       <p>(<code>aisd</code> / <code>aisclk</code> / <code>aislr</code>),</p>
       <ul>
@@ -89,14 +89,14 @@
         <tr><td><code>aiclk</code></td><td>1</td><td>out</td><td>Bit clock for <code>aid</code></td></tr>
       </table>
       <p><code>aid</code> is the MSB of the current L or R shift register, selected by the <code>ailr</code> level. The output stream is always at the 48 kHz sample rate (the DAC clock is derived from the fixed video clock), regardless of the input sample rate.</p>
-      <h3>2.2 Streaming input (disc drive → AI)</h3>
+      <h3>2.2 Streaming input (disk drive → AI)</h3>
       <table>
         <tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr>
-        <tr><td><code>aisd</code></td><td>1</td><td>in</td><td>Serial audio data from the disc drive — the 16-bit L or R sample, MSB first, one bit per <code>aisclk</code></td></tr>
+        <tr><td><code>aisd</code></td><td>1</td><td>in</td><td>Serial audio data from the disk drive — the 16-bit L or R sample, MSB first, one bit per <code>aisclk</code></td></tr>
         <tr><td><code>aislr</code></td><td>1</td><td>out</td><td>Left/right frame for the stream — toggles at the <strong>stream</strong> sample rate (32 or 48 kHz)</td></tr>
-        <tr><td><code>aisclk</code></td><td>1</td><td>out</td><td>Bit clock for <code>aisd</code> (the AI drives it to the disc)</td></tr>
+        <tr><td><code>aisclk</code></td><td>1</td><td>out</td><td>Bit clock for <code>aisd</code> (the AI drives it to the disk)</td></tr>
       </table>
-      <p><code>aislr</code> is what <strong>gates</strong> the flow of stream data: while <code>AICR.PSTAT</code> is set the frame keeps toggling and the disc keeps sending; when it stops, the disc treats the stream as paused and sends zeros, and only begins again after it receives a high-low-high sequence (see §4).</p>
+      <p><code>aislr</code> is what <strong>gates</strong> the flow of stream data: while <code>AICR.PSTAT</code> is set the frame keeps toggling and the disk keeps sending; when it stops, the disk treats the stream as paused and sends zeros, and only begins again after it receives a high-low-high sequence (see §4).</p>
       <h3>2.3 DSP and mode signals</h3>
       <table>
         <tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr>
@@ -143,7 +143,7 @@ DSP L/R (32/48 kHz) ────────────────────
       <ul>
         <li><strong>Start / pause gate (<code>AICR.PSTAT</code>).</strong> <code>AICR.PSTAT</code> is the play status. When it</li>
       </ul>
-      <p>is set the streaming bit-clock and the <code>aislr</code> frame are enabled; the disc keeps sending samples. When cleared, the frame stops toggling, the disc treats the stream as paused and sends zeros, and it only resumes after a high-low-high <code>aislr</code> sequence. So the streaming interface is effectively enabled/disabled by <code>PSTAT</code>, not by a separate clock-enable register.</p>
+      <p>is set the streaming bit-clock and the <code>aislr</code> frame are enabled; the disk keeps sending samples. When cleared, the frame stops toggling, the disk treats the stream as paused and sends zeros, and it only resumes after a high-low-high <code>aislr</code> sequence. So the streaming interface is effectively enabled/disabled by <code>PSTAT</code>, not by a separate clock-enable register.</p>
       <ul>
         <li><strong>Mixing.</strong> The deserialised, resampled stream is multiplied by <code>AIVR</code>, added to</li>
       </ul>
@@ -215,7 +215,7 @@ DSP L/R (32/48 kHz) ────────────────────
       <p>Reset value <code>0x0000_0000</code>. The fields occupy the low 7 bits; bits 31:7 read as 0.</p>
       <table>
         <tr><th>Bits</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
-        <tr><td>0</td><td><code>PSTAT</code></td><td>R/W</td><td>0</td><td>Play status. <code>1</code> enables the streaming <code>aislr</code> clock / starts playback; <code>0</code> stops or pauses the stream (the disc then sends zeros). Also enables the counter increment.</td></tr>
+        <tr><td>0</td><td><code>PSTAT</code></td><td>R/W</td><td>0</td><td>Play status. <code>1</code> enables the streaming <code>aislr</code> clock / starts playback; <code>0</code> stops or pauses the stream (the disk then sends zeros). Also enables the counter increment.</td></tr>
         <tr><td>1</td><td><code>AFR</code></td><td>R/W</td><td>0</td><td>Streaming (auxiliary) sample rate. <code>0</code> = 32 kHz, <code>1</code> = 48 kHz. The SRC converts a 32 kHz stream to 48 kHz. Should only be changed while <code>PSTAT</code> = 0.</td></tr>
         <tr><td>2</td><td><code>AIINTMSK</code></td><td>R/W</td><td>0</td><td>Streaming-interrupt mask. <code>0</code> = masked, <code>1</code> = enabled (drives <code>ai_piInt</code>).</td></tr>
         <tr><td>3</td><td><code>AIINT</code></td><td>R/WC</td><td>0</td><td>Streaming-interrupt status. Read: <code>0</code> no request, <code>1</code> request. <strong>Write 1 to clear.</strong> Asserts regardless of <code>AIINTMSK</code>.</td></tr>
@@ -285,7 +285,7 @@ DSP L/R (32/48 kHz) ────────────────────
       <ol>
         <li><strong>Streaming clock gating (<code>PSTAT</code>).</strong> <code>AICR.PSTAT</code> enables the streaming</li>
       </ol>
-      <p>bit-clock/<code>aislr</code>. When <code>PSTAT</code> is 0 the <code>aislr</code> frame stops, the disc pauses and sends zeros; the disc resumes on a high-low-high <code>aislr</code> sequence. Only start the streaming clock (and increment <code>AISCNT</code>) when <code>PSTAT</code> is 1.</p>
+      <p>bit-clock/<code>aislr</code>. When <code>PSTAT</code> is 0 the <code>aislr</code> frame stops, the disk pauses and sends zeros; the disk resumes on a high-low-high <code>aislr</code> sequence. Only start the streaming clock (and increment <code>AISCNT</code>) when <code>PSTAT</code> is 1.</p>
       <ol>
         <li><strong><code>dvdaudio_mode</code>.</strong> Expose <code>AIIT[31]</code> as a read/write mode flag. Its effect is</li>
       </ol>
