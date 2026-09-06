@@ -114,16 +114,19 @@ replication can clear 8 bytes with one byte store and is noticeably faster than
 
 ## 3. Graphics processor (GFX)
 
-The GFX is a **fixed-function** pipeline (no programmable shading) with three main
-stages: command processor, geometry/lighting, and rasterizer.
+The GFX is a **fixed-function** pipeline (no programmable shading) with two main
+stages: geometry/lighting and rasterizer. It is fed by the **command processor (CP)**,
+which is a separate Flipper module that supplies the graphics command / vertex stream
+whose entry point into the pipeline is the XF (see §3).
 
 The dedicated GFX page — the pipeline overview and index of its sub-systems — is in
 [gfx.md](gfx.md); the register-level sub-system specifications hang off that page.
 
-- **Command processor:** an on-chip FIFO for the command stream (commands read in
-  32-byte chunks), a call FIFO for display lists (no nesting), a vertex cache and
-  vertex-format fetch. Vertex attributes can come from the stream or from arrays
-  in main memory (including fixed-point formats).
+- **Command processor (CP, separate module):** an on-chip FIFO for the command stream
+  (commands read in 32-byte chunks), a call FIFO for display lists (no nesting), a
+  vertex cache and vertex-format fetch. Vertex attributes can come from the stream or
+  from arrays in main memory (including fixed-point formats). The CP is not a stage of
+  the graphics pipeline; it is described separately.
 - **Geometry:** fixed-point math, **8** hardware RGBA light sources with
   diffuse/specular components, angle and distance attenuation, toon shading,
   bump mapping and a 64-entry matrix RAM (plus dual-texture transform).

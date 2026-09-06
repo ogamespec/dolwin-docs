@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GameCube Hardware — GFX (Graphics)</title>
-  <meta name="description" content="Nintendo GameCube GFX (graphics) subsystem inside the Flipper ASIC: fixed-function pipeline, command processor, transform, rasterizer, texture unit, texture environment, pixel engine and video interface." />
+  <meta name="description" content="Nintendo GameCube GFX (graphics) subsystem inside the Flipper ASIC: the fixed-function pipeline from transform to the embedded framebuffer, plus the separate command processor that feeds it." />
   <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
   <link rel="stylesheet" href="assets/css/style.css" />
   <link rel="icon" href="assets/favicon.ico" sizes="any" />
@@ -46,47 +46,46 @@
       <p>This page is the <strong>overview / index</strong> for the GFX pipeline. Each stage below is described at overview level and links out to the register-level specification that covers it. Where a dedicated page does not yet exist the stage is summarised here so that the corresponding document can later be hung off the relevant section.</p>
       <p>The facts are drawn from the repository's hardware documentation, chip RTL and reverse-engineering sources and are summarised (paraphrased) rather than reproduced.</p>
       <h2>1. Role and connection</h2>
-      <p>Physically the GFX lives entirely inside the Flipper ASIC. On its input side it is fed by the Gekko through the <strong>Processor Interface (PI)</strong> — the CPU never talks to the GFX blocks directly; it writes a command stream to the <strong>PI FIFO</strong> at <code>0x0C008000</code> (from the uncached physical map) and the GFX's own <strong>command processor (CP)</strong> then consumes it. On its output side the GFX draws into the on-chip <strong>embedded framebuffer (EFB)</strong>, optionally copies / filters / scales that into an <strong>external framebuffer (XFB)</strong> in main memory, and the <strong>Video Interface (VI)</strong> reads the XFB and drives the video encoder.</p>
-      <p>GFX blocks act as <strong>masters</strong> on the main-memory interface:</p>
+      <p>Physically the GFX lives entirely inside the Flipper ASIC. The <strong>entry point of all graphics commands is the transform unit (XF)</strong> — that is where the graphics pipeline begins. The command and vertex data that the XF consumes is produced by the <strong>Command Processor (CP)</strong>, which is a <em>separate</em> Flipper module (see §3), not a stage of the graphics pipeline. The CPU never talks to the GFX blocks directly: it writes a command stream to the <strong>PI FIFO</strong> at <code>0x0C008000</code> (from the uncached physical map), the CP reads it, and the CP then feeds the XF. On its output side the GFX draws into the on-chip <strong>embedded framebuffer (EFB)</strong>, optionally copies / filters / scales that into an <strong>external framebuffer (XFB)</strong> in main memory, and the <strong>Video Interface (VI)</strong> reads the XFB and drives the video encoder.</p>
+      <p>The blocks that move data over the main-memory interface on behalf of the graphics path are:</p>
       <table>
         <tr><th>Master</th><th>What it reads / writes</th></tr>
-        <tr><td><strong>CP</strong></td><td>the command stream and display lists from main memory; vertex attribute arrays</td></tr>
+        <tr><td><strong>CP</strong></td><td>the command stream and display lists from main memory; vertex attribute arrays (a separate module — see §3)</td></tr>
         <tr><td><strong>TC</strong> (texture unit)</td><td>texture source data in main memory</td></tr>
         <tr><td><strong>PE</strong> (pixel engine)</td><td>EFB read/modify/write and the EFB→XFB copy</td></tr>
         <tr><td><strong>VI</strong></td><td>the external framebuffer (XFB) for scan-out</td></tr>
       </table>
       <p>The <strong>PI</strong> is a master too (Gekko), but only for register access and the PI FIFO. The arbitration, queueing and bandwidth of all of these is the job of the <strong>Memory Interface (MI)</strong> — see <a href="memory-interface.html">memory-interface.md</a>.</p>
       <h2>2. Pipeline overview and index</h2>
-      <p>The GFX pipeline can be broken into a <strong>front end</strong> (command processing + geometry) and a <strong>back end</strong> (rasterization + per-pixel colour + frame buffer). Everything is fixed-function and the data flows once, right to left in the block diagram:</p>
-      <pre><code>Gekko ──PI FIFO──▶ CP ──▶ XF (transform/light/clip) ──▶ SU (setup) ──▶ RAS ──▶ TEV ──▶ PE (EFB) ──▶ Copy ──▶ XFB ──▶ VI
-                        ▲                        ▲                              ▲
-                   call FIFO (display lists)     │                              │
-                        │                  matrix/light RAM             texture unit (TC/TMEM/TF)
-                        └── vertex cache ──▶ ... ─────────────────────────┘</code></pre>
+      <p>The GFX pipeline proper is a <strong>front end</strong> (geometry) and a <strong>back end</strong> (rasterization + per-pixel colour + frame buffer). Everything is fixed-function and the data flows once, right to left in the block diagram. The <strong>Command Processor (CP)</strong> sits to the left of the pipeline — it is a separate module that supplies the command and vertex data, and the graphics commands enter the pipeline at the <strong>XF</strong>:</p>
+      <pre><code>  (separate module — command source)                  (graphics pipeline — entry point = XF)
+  Gekko ──PI FIFO──▶ CP ──▶ command + vertex data ──▶ XF ──▶ SU ──▶ RAS ──▶ TEV ──▶ PE (EFB) ──▶ Copy ──▶ XFB ──▶ VI
+                                                       ▲                              ▲
+                                                  matrix/light RAM             texture unit (TC/TMEM/TF)</code></pre>
       <table>
         <tr><th>#</th><th>Subsystem</th><th>Block(s)</th><th>Role</th><th>Dedicated spec</th></tr>
-        <tr><td>1</td><td>Command processor</td><td><strong>CP</strong></td><td>Reads the command stream & display lists, fetches vertex attributes, caches vertices</td><td><code>gfx-command-processor</code> <em>(planned)</em></td></tr>
-        <tr><td>2</td><td>Transform / geometry</td><td><strong>XF</strong></td><td>Vertex transform, lighting, texture-coordinate generation, clipping/culling</td><td><code>gfx-transform</code> <em>(planned)</em></td></tr>
-        <tr><td>3</td><td>Setup / rasterizer</td><td><strong>SU</strong>, <strong>RAS0/1/2</strong>, <strong>Bump</strong></td><td>Triangle setup and the three edge/texture/colour rasterizers, plus the bump-directive unit</td><td><code>gfx-rasterizer</code> <em>(planned)</em></td></tr>
-        <tr><td>4</td><td>Texture unit</td><td><strong>TC / TMEM / TF</strong></td><td>Texture memory & cache, texture address generation, LOD and filtering</td><td><code>gfx-texture</code> <em>(planned)</em></td></tr>
-        <tr><td>5</td><td>Texture environment</td><td><strong>TEV</strong></td><td>Per-pixel colour/alpha combine, fog, indirect & Z texturing</td><td><code>gfx-tev</code> <em>(planned)</em></td></tr>
-        <tr><td>6</td><td>Pixel engine</td><td><strong>PE</strong></td><td>Colour/Z compare & blend, the EFB, and the EFB→XFB copy / scale / format convert</td><td><code>gfx-pixel-engine</code> <em>(planned)</em></td></tr>
-        <tr><td>7</td><td>Video interface</td><td><strong>VI</strong></td><td>Reads the XFB, generates TV timing, horizontal scaler</td><td><a href="video-interface.html">video-interface.md</a></td></tr>
+        <tr><td>1</td><td>Transform / geometry</td><td><strong>XF</strong></td><td>entry point of the graphics commands; vertex transform, lighting, texture-coordinate generation, clipping/culling</td><td><code>gfx-transform</code> <em>(planned)</em></td></tr>
+        <tr><td>2</td><td>Setup / rasterizer</td><td><strong>SU</strong>, <strong>RAS0/1/2</strong>, <strong>Bump</strong></td><td>Triangle setup and the three edge/texture/colour rasterizers, plus the bump-directive unit</td><td><code>gfx-rasterizer</code> <em>(planned)</em></td></tr>
+        <tr><td>3</td><td>Texture unit</td><td><strong>TC / TMEM / TF</strong></td><td>Texture memory & cache, texture address generation, LOD and filtering</td><td><code>gfx-texture</code> <em>(planned)</em></td></tr>
+        <tr><td>4</td><td>Texture environment</td><td><strong>TEV</strong></td><td>Per-pixel colour/alpha combine, fog, indirect & Z texturing</td><td><code>gfx-tev</code> <em>(planned)</em></td></tr>
+        <tr><td>5</td><td>Pixel engine</td><td><strong>PE</strong></td><td>Colour/Z compare & blend, the EFB, and the EFB→XFB copy / scale / format convert</td><td><code>gfx-pixel-engine</code> <em>(planned)</em></td></tr>
+        <tr><td>6</td><td>Video interface</td><td><strong>VI</strong></td><td>Reads the XFB, generates TV timing, horizontal scaler</td><td><a href="video-interface.html">video-interface.md</a></td></tr>
       </table>
-      <blockquote>The <code>gfx-*</code> subsystem pages listed as <em>planned</em> do not exist yet; this page serves as their index. Each pipeline section below describes the corresponding stage, and the detailed register-level document can later be attached to it.</blockquote>
+      <blockquote>The <strong>Command Processor (CP)</strong> is deliberately absent from the table above: it is a separate Flipper module that <em>produces</em> the graphics command / vertex stream, not a stage of the pipeline. It is described in §3. The <code>gfx-*</code> subsystem pages listed as <em>planned</em> do not exist yet; this page serves as their index. Each pipeline section below describes the corresponding stage, and the detailed register-level document can later be attached to it.</blockquote>
       <p>The GFX stage that turns the stored image into the on-screen signal is the <strong>VI</strong>, which is specified separately in <a href="video-interface.html">video-interface.md</a>.</p>
-      <h2>3. Command processor (CP)</h2>
-      <p>The CP is the front end of the pipeline. It fetches three kinds of data from main memory through on-chip FIFOs, always in <strong>32-byte</strong> chunks:</p>
+      <h2>3. Command processor (CP) — the graphics command source</h2>
+      <p>The <strong>Command Processor (CP)</strong> is a <em>separate</em> Flipper module. It is not a stage of the GFX pipeline; instead it is the <strong>source</strong> of the graphics command and vertex data. The CP reads the command stream, resolves display lists, fetches and caches vertex attributes, and hands the resulting vertex stream to the pipeline. Its output is consumed at the <strong>XF</strong>, which is the entry point for all graphics commands.</p>
+      <p>The CP fetches three kinds of data from main memory through on-chip FIFOs, always in <strong>32-byte</strong> chunks:</p>
       <ul>
         <li><strong>Command stream</strong> — the graphics command list, read from main memory through an on-chip buffer FIFO.</li>
         <li><strong>Display lists</strong> — read via a separate <strong>call FIFO</strong>; a display list is called from the stream but cannot call another (no nesting).</li>
         <li><strong>Vertex attributes</strong> — either carried inline in the stream, or fetched from <strong>vertex arrays</strong> in main memory and cached.</li>
       </ul>
-      <h3>3.1 Gekko → GFX FIFOs</h3>
-      <p>Two FIFOs arbitrate the flow of commands between the CPU and the GFX:</p>
+      <h3>3.1 Gekko → CP FIFOs</h3>
+      <p>Two FIFOs arbitrate the flow of commands between the CPU and the CP (which then feeds the GFX):</p>
       <ul>
         <li><strong>PI FIFO</strong> — on the Gekko side. The CPU performs a burst store to <code>0x0C008000</code>, the write pointer advances by 32 bytes with wrap-around control (<code>CPBAS</code>, <code>CPTOP</code>, <code>CPWRT</code>, <code>CPABT</code>). The Gekko write-gather buffer (SPR <code>WPAR</code>) can be configured to this address so that single-beat writes are collected into a single 32-byte burst.</li>
-        <li><strong>CP FIFO</strong> — on the GFX side. The CP reads the stream from main memory using its own pointers and the watermark/high–low counters (<code>CP_FIFO_BASE/TOP</code>, high/low water counts, read/write pointers, break point).</li>
+        <li><strong>CP FIFO</strong> — on the CP side. The CP reads the stream from main memory using its own pointers and the watermark/high–low counters (<code>CP_FIFO_BASE/TOP</code>, high/low water counts, read/write pointers, break point).</li>
       </ul>
       <p>The CP FIFO runs in <strong>linked mode</strong> or <strong>multi-buffer mode</strong>. Linked mode couples the Gekko's PI-FIFO write pointer to the CP read pointer so the CP starts work as soon as the distance between them grows; multi-buffer mode requires the program to set the read and write pointers itself.</p>
       <h3>3.2 FIFO command format</h3>
@@ -161,10 +160,10 @@
       <p>The VI is the interface between the GFX output and the TV encoder. It reads the XFB from main memory, unpacks the YUV 4:2:2 data, optionally runs it through a horizontal resampler / anti-alias filter, and clocks it out to the digital encoder with all the NTSC / PAL / M-PAL synchronisation and blanking. It also provides the vertical retrace interrupt, the light-gun position latch and the 480p progressive mode.</p>
       <p>The VI is specified separately and in full at the register level in <a href="video-interface.html">video-interface.md</a> — see that page for the complete register map, timing tables and emulator model.</p>
       <h2>10. State & register organisation</h2>
-      <p>GFX state is split into three register spaces, written through the FIFO command stream (the CPU only touches them via the PI FIFO / display-list commands):</p>
+      <p>The pipeline state is written through the FIFO command stream (the CPU only touches it via the PI FIFO / display-list commands). It is held in:</p>
       <ul>
-        <li><strong>CP registers</strong> — command-processor control (FIFO pointers, watermark, vertex format, array base/stride, matrix index). Partially mirrored into the CPU-resident register map.</li>
-        <li><strong>XF registers</strong> — matrix / light memory and all the transform, lighting and texture-coordinate controls.</li>
+        <li><strong>CP registers</strong> — the control of the (separate) command processor: FIFO pointers, watermark, vertex format, array base/stride, matrix index. Partially mirrored into the CPU-resident register map. (See §3.)</li>
+        <li><strong>XF registers</strong> — the matrix / light memory and all the transform, lighting and texture-coordinate controls of the pipeline's first stage.</li>
         <li><strong>Bypass (BP) registers</strong> — the bulk of the pipeline stage registers, so called because they are written <em>bypassing</em> the XF. They are organised into groups: GEN (shared), SU/RAS, PE, and the texture (TX) and TEV groups, plus the pixel-emitter "finish" registers.</li>
       </ul>
       <p>The GFX has no general-purpose memory-mapped register window of its own; the address that the CPU uses (<code>0x0C000000</code> CP, <code>0x0C001000</code> PE, <code>0x0C002000</code> VI, <code>0x0C003000</code> PI, <code>0x0C004000</code> MI, ...) exposes the parts of the GFX that the Gekko must reach directly, while the rest of the pipeline state is driven purely through the command FIFO.</p>
@@ -172,7 +171,7 @@
       <table>
         <tr><th>Parameter</th><th>Value</th></tr>
         <tr><td>Pipeline</td><td>fixed-function (no programmable shaders); microcoded transform sequencer</td></tr>
-        <tr><td>Command interface</td><td>PI FIFO → command processor; CP FIFO + display-list call FIFO</td></tr>
+        <tr><td>Command interface</td><td>PI FIFO → command processor (CP, a separate module) → <strong>XF</strong> (entry point); CP FIFO + display-list call FIFO</td></tr>
         <tr><td>Vertex cache</td><td>8 KB, 8-way set associative</td></tr>
         <tr><td>Transform</td><td>fixed-point; 8 lights; 64×4 + 32×3 + 64×4 matrix RAM; up to 8 texture coords</td></tr>
         <tr><td>Rasterization</td><td>3 rasterizers (edge / texture-coord / colour); points, lines, triangles, strips, fans, quads</td></tr>
