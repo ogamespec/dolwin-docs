@@ -16,6 +16,7 @@ user-friendly `docs/` folder served on GitHub Pages.
 | Clock generator | [architecture/clock-generator.md](architecture/clock-generator.md) |
 | IBM Gekko processor | [architecture/gekko.md](architecture/gekko.md) |
 | Flipper chipset | [architecture/flipper.md](architecture/flipper.md) |
+| GFX (Graphics) | [architecture/gfx.md](architecture/gfx.md) |
 | Video Interface (VI) | [architecture/video-interface.md](architecture/video-interface.md) |
 | Memory Interface (MEM) | [architecture/memory-interface.md](architecture/memory-interface.md) |
 | Processor Interface (PI) | [architecture/processor-interface.md](architecture/processor-interface.md) |

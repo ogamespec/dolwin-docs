@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — GFX (Graphics)</title>
+  <meta name="description" content="Nintendo GameCube GFX (graphics) subsystem inside the Flipper ASIC: fixed-function pipeline, command processor, transform, rasterizer, texture unit, texture environment, pixel engine and video interface." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="icon" href="assets/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="assets/cube.svg" />
+  <link rel="apple-touch-icon" href="assets/icon-512.png" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html"><span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="gfx.html" class="active">GFX (Graphics)</a>
+      <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html">Audio Interface</a>
+      <a href="memory-interface.html">Memory Interface</a>
+      <a href="processor-interface.html">Processor Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="peripherals.html">Peripherals (EXI & SI)</a>
+      <a href="serial-interface.html">Serial Interface (SI)</a>
+      <a href="expansion-interface.html">Expansion Interface (EXI)</a>
+    </nav>
+    <div class="theme-toggle"><span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / GFX (Graphics)</p>
+      <h1>GameCube — GFX (Graphics) Subsystem</h1>
+      <blockquote><strong>GFX</strong> is the fixed-function graphics processor embedded in the <strong>Flipper</strong> ASIC. It is the engine that turns the command stream produced by the Gekko CPU into the image that the <strong>Video Interface (VI)</strong> scans out to a TV. The GFX has no programmable shaders: every stage is a dedicated block with a fixed (but register-configurable) function, and the whole pipeline runs in parallel with the CPU and the DSP.</blockquote>
+      <p>This page is the <strong>overview / index</strong> for the GFX pipeline. Each stage below is described at overview level and links out to the register-level specification that covers it. Where a dedicated page does not yet exist the stage is summarised here so that the corresponding document can later be hung off the relevant section.</p>
+      <p>The facts are drawn from the repository's hardware documentation, chip RTL and reverse-engineering sources and are summarised (paraphrased) rather than reproduced.</p>
+      <h2>1. Role and connection</h2>
+      <p>Physically the GFX lives entirely inside the Flipper ASIC. On its input side it is fed by the Gekko through the <strong>Processor Interface (PI)</strong> — the CPU never talks to the GFX blocks directly; it writes a command stream to the <strong>PI FIFO</strong> at <code>0x0C008000</code> (from the uncached physical map) and the GFX's own <strong>command processor (CP)</strong> then consumes it. On its output side the GFX draws into the on-chip <strong>embedded framebuffer (EFB)</strong>, optionally copies / filters / scales that into an <strong>external framebuffer (XFB)</strong> in main memory, and the <strong>Video Interface (VI)</strong> reads the XFB and drives the video encoder.</p>
+      <p>GFX blocks act as <strong>masters</strong> on the main-memory interface:</p>
+      <table>
+        <tr><th>Master</th><th>What it reads / writes</th></tr>
+        <tr><td><strong>CP</strong></td><td>the command stream and display lists from main memory; vertex attribute arrays</td></tr>
+        <tr><td><strong>TC</strong> (texture unit)</td><td>texture source data in main memory</td></tr>
+        <tr><td><strong>PE</strong> (pixel engine)</td><td>EFB read/modify/write and the EFB→XFB copy</td></tr>
+        <tr><td><strong>VI</strong></td><td>the external framebuffer (XFB) for scan-out</td></tr>
+      </table>
+      <p>The <strong>PI</strong> is a master too (Gekko), but only for register access and the PI FIFO. The arbitration, queueing and bandwidth of all of these is the job of the <strong>Memory Interface (MI)</strong> — see <a href="memory-interface.html">memory-interface.md</a>.</p>
+      <h2>2. Pipeline overview and index</h2>
+      <p>The GFX pipeline can be broken into a <strong>front end</strong> (command processing + geometry) and a <strong>back end</strong> (rasterization + per-pixel colour + frame buffer). Everything is fixed-function and the data flows once, right to left in the block diagram:</p>
+      <pre><code>Gekko ──PI FIFO──▶ CP ──▶ XF (transform/light/clip) ──▶ SU (setup) ──▶ RAS ──▶ TEV ──▶ PE (EFB) ──▶ Copy ──▶ XFB ──▶ VI
+                        ▲                        ▲                              ▲
+                   call FIFO (display lists)     │                              │
+                        │                  matrix/light RAM             texture unit (TC/TMEM/TF)
+                        └── vertex cache ──▶ ... ─────────────────────────┘</code></pre>
+      <table>
+        <tr><th>#</th><th>Subsystem</th><th>Block(s)</th><th>Role</th><th>Dedicated spec</th></tr>
+        <tr><td>1</td><td>Command processor</td><td><strong>CP</strong></td><td>Reads the command stream & display lists, fetches vertex attributes, caches vertices</td><td><code>gfx-command-processor</code> <em>(planned)</em></td></tr>
+        <tr><td>2</td><td>Transform / geometry</td><td><strong>XF</strong></td><td>Vertex transform, lighting, texture-coordinate generation, clipping/culling</td><td><code>gfx-transform</code> <em>(planned)</em></td></tr>
+        <tr><td>3</td><td>Setup / rasterizer</td><td><strong>SU</strong>, <strong>RAS0/1/2</strong>, <strong>Bump</strong></td><td>Triangle setup and the three edge/texture/colour rasterizers, plus the bump-directive unit</td><td><code>gfx-rasterizer</code> <em>(planned)</em></td></tr>
+        <tr><td>4</td><td>Texture unit</td><td><strong>TC / TMEM / TF</strong></td><td>Texture memory & cache, texture address generation, LOD and filtering</td><td><code>gfx-texture</code> <em>(planned)</em></td></tr>
+        <tr><td>5</td><td>Texture environment</td><td><strong>TEV</strong></td><td>Per-pixel colour/alpha combine, fog, indirect & Z texturing</td><td><code>gfx-tev</code> <em>(planned)</em></td></tr>
+        <tr><td>6</td><td>Pixel engine</td><td><strong>PE</strong></td><td>Colour/Z compare & blend, the EFB, and the EFB→XFB copy / scale / format convert</td><td><code>gfx-pixel-engine</code> <em>(planned)</em></td></tr>
+        <tr><td>7</td><td>Video interface</td><td><strong>VI</strong></td><td>Reads the XFB, generates TV timing, horizontal scaler</td><td><a href="video-interface.html">video-interface.md</a></td></tr>
+      </table>
+      <blockquote>The <code>gfx-*</code> subsystem pages listed as <em>planned</em> do not exist yet; this page serves as their index. Each pipeline section below describes the corresponding stage, and the detailed register-level document can later be attached to it.</blockquote>
+      <p>The GFX stage that turns the stored image into the on-screen signal is the <strong>VI</strong>, which is specified separately in <a href="video-interface.html">video-interface.md</a>.</p>
+      <h2>3. Command processor (CP)</h2>
+      <p>The CP is the front end of the pipeline. It fetches three kinds of data from main memory through on-chip FIFOs, always in <strong>32-byte</strong> chunks:</p>
+      <ul>
+        <li><strong>Command stream</strong> — the graphics command list, read from main memory through an on-chip buffer FIFO.</li>
+        <li><strong>Display lists</strong> — read via a separate <strong>call FIFO</strong>; a display list is called from the stream but cannot call another (no nesting).</li>
+        <li><strong>Vertex attributes</strong> — either carried inline in the stream, or fetched from <strong>vertex arrays</strong> in main memory and cached.</li>
+      </ul>
+      <h3>3.1 Gekko → GFX FIFOs</h3>
+      <p>Two FIFOs arbitrate the flow of commands between the CPU and the GFX:</p>
+      <ul>
+        <li><strong>PI FIFO</strong> — on the Gekko side. The CPU performs a burst store to <code>0x0C008000</code>, the write pointer advances by 32 bytes with wrap-around control (<code>CPBAS</code>, <code>CPTOP</code>, <code>CPWRT</code>, <code>CPABT</code>). The Gekko write-gather buffer (SPR <code>WPAR</code>) can be configured to this address so that single-beat writes are collected into a single 32-byte burst.</li>
+        <li><strong>CP FIFO</strong> — on the GFX side. The CP reads the stream from main memory using its own pointers and the watermark/high–low counters (<code>CP_FIFO_BASE/TOP</code>, high/low water counts, read/write pointers, break point).</li>
+      </ul>
+      <p>The CP FIFO runs in <strong>linked mode</strong> or <strong>multi-buffer mode</strong>. Linked mode couples the Gekko's PI-FIFO write pointer to the CP read pointer so the CP starts work as soon as the distance between them grows; multi-buffer mode requires the program to set the read and write pointers itself.</p>
+      <h3>3.2 FIFO command format</h3>
+      <p>A command is a 32-bit word whose high bits select the operation and the low bits carry the operand / vertex-attribute-table (<code>vat</code>) selector. Supported verbs include <em>NOP</em>, the draw commands (<em>quads, triangles, triangle strip, triangle fan, lines, line strip, points</em>), CP/XF register loads, index loads, <code>Call_Object</code> (display list), <code>V$_Invalidate</code> and the setup-unit <em>bypass</em> commands. Vertex counts follow the draw opcode in a 16-bit field.</p>
+      <h3>3.3 Vertex cache</h3>
+      <p>For indexed vertices the CP caches attribute data fetched from main memory in an <strong>8 KB, 8-way set-associative</strong> vertex cache, invalidated on demand with <code>V$_Invalidate</code>. How a vertex is composed is described by two pieces of per-vertex state:</p>
+      <ul>
+        <li><strong>Vertex Command Descriptor (VCD)</strong> — which attributes are present and whether they are direct or indexed, for position, normal, two colours and up to eight texture coordinates.</li>
+        <li><strong>Vertex Attribute Table (VAT)</strong> — for each attribute, the component count (<code>CompCount</code>), the component width and fixed-point shift (<code>CompSize</code>, <code>Shift</code>), so the CP knows how to unpack the attribute stream.</li>
+      </ul>
+      <h2>4. Transform / geometry (XF)</h2>
+      <p>The XF takes one vertex at a time and performs object-space → <strong>screen-space</strong> transformation, lighting, texture-coordinate generation (including projective coordinates and bump mapping), and polygon clipping / culling. It uses <strong>fixed-point</strong> arithmetic (20-bit fraction datapath) and a microcoded sequencer rather than a general purpose ALU.</p>
+      <h3>4.1 Matrix & light memory</h3>
+      <table>
+        <tr><th>Memory</th><th>Organisation</th></tr>
+        <tr><td>Geometry / texture matrix RAM</td><td>64 entries × 4 words (model-view & per-texture matrices)</td></tr>
+        <tr><td>Normal matrix RAM</td><td>32 rows × 3 words (for lighting)</td></tr>
+        <tr><td>Dual-texture matrix RAM</td><td>64 entries × 4 words (Rev B dual texture transform)</td></tr>
+        <tr><td>Light parameter RAM</td><td>8 light records × 16 words</td></tr>
+      </table>
+      <h3>4.2 Lighting</h3>
+      <p>Up to <strong>8</strong> hardware lights. Each light record holds an RGBA colour, the three cosine attenuation coefficients (<code>A0/A1/A2</code>), three distance-attenuation coefficients (<code>K0/K1/K2</code>), a position (or, for an infinite light, a direction), and a half-vector or spotlight direction. Per-vertex lighting combines the ambient, material and vertex colours with the lit contributions, with a selectable diffuse attenuation function and attenuation enable/select, and supports <strong>toon</strong> shading. Two independent colour channels (<strong>colour0</strong>, <strong>colour1</strong>) can be lit separately.</p>
+      <h3>4.3 Texture-coordinate generation</h3>
+      <p>Each of the up to 8 texture coordinates can be generated one of three ways: a regular <strong>matrix transform</strong> of an incoming source row, a <strong>bump-map</strong> (embossed) form that perturbs the coordinate from the output of the bump unit and a light vector, or a <strong>colour</strong> form where the coordinate is taken from the red/green (and blue) of a per-vertex colour. A <em>dual texture transform</em> (Rev B) applies a second matrix to the same coordinate.</p>
+      <h3>4.4 Clipping / culling</h3>
+      <p>The XF rejects or clips geometry against the view volume. Clipping can be selectively disabled via a control register (clip detection, trivial rejection and the polygon-clipping acceleration are each independent).</p>
+      <h2>5. Setup & rasterization (SU / RAS / Bump)</h2>
+      <h3>5.1 Setup unit (SU)</h3>
+      <p>The SU receives transformed vertices from the XF and produces the setup information the rasterizers need: screen-space scissor (two corners), line & point size (with a selectable texture-offset for lines and points), the triangle parameters, and the per-stage texture-size and "s/t" scale/shift controls. It also has a performance counter block and the 24-bit <strong>sub-sample mask</strong> that controls multi-sampling coverage. Fields in the shared <strong>GEN_MODE</strong> register select the number of texture coordinates, colour values, TEV stages, bump stages, flat shading, multi-sampling and front/back rejection that the rest of the pipeline should expect.</p>
+      <h3>5.2 Rasterizers (RAS0/1/2)</h3>
+      <p>Three parallel rasterizer blocks walk the pixels of each primitive:</p>
+      <ul>
+        <li><strong>RAS0</strong> — edge (X/Y) rasterization, producing the per-pixel coordinates.</li>
+        <li><strong>RAS1</strong> — texture-coordinate rasterization, generating interpolated <code>s/t</code> (optionally <code>q</code>) for each texture stage, with per-stage coordinate <strong>shifts</strong> and the <strong>indirect-texture reference</strong> map.</li>
+        <li><strong>RAS2</strong> — colour rasterization, generating the interpolated per-vertex colours.</li>
+      </ul>
+      <p>The <strong>Bump</strong> unit runs ahead of the texture unit and produces the bump-matrix / directive information used by RAS1 for bump-mapped texture coordinates, and the texture coordinate-generation of the XF. Supported primitives are points, lines, line strips, triangles, triangle strips, triangle fans (and quads, assembled by the host or the CP).</p>
+      <h2>6. Texture unit (TC / TMEM / TF)</h2>
+      <h3>6.1 Texture memory (TMEM)</h3>
+      <p>TMEM is <strong>512 KB</strong> of fast embedded memory on the Flipper die. It is the working store for texture images and palette (TLUT) data; a texture is loaded into TMEM from main memory, or an EFB region can be <em>copied</em> back into TMEM to be re-used as a texture. The <strong>tmem_offset</strong> fields in the load / image registers are 15-bit word addresses, i.e. the whole 512 KB is word-addressable.</p>
+      <p>Textures can be up to <strong>1024 × 1024</strong>. Supported texture formats include an indexed set (CI4 / CI8 / CI14 with a TLUT) plus unpacked formats (I4, I8, IA4, IA8, RGB565, RGB5A3, RGBA8) and a native compressed format (S3TC / CMPR, 4×4 blocks). Palettes (TLUTs) are stored as IA8, RGB565 or RGB5A3.</p>
+      <h3>6.2 Texture cache & addressing</h3>
+      <p>The texture cache unit (TC) generates the texture address from the interpolated coordinates, handles LOD (level of detail) selection, and <strong>cache</strong> lookups. It supports wrap modes (clamp-to-edge / repeat / mirror), min/mag filters (point vs linear, plus mip-mapped variants), a LOD bias, an optional maximum anisotropy (1× / 2× / 4×), optional LOD clamping, and the <strong>EFB copy as texture</strong> path. The cache is tag-managed and can be invalidated; a reload/refresh mechanism keeps the texture memory up to date.</p>
+      <h3>6.3 Texture filter (TF)</h3>
+      <p>The TF performs the actual bilinear / trilinear (and anisotropic) filtering of the texels fetched from TMEM, and the address-dependent "indirect" look-up that feeds the TEV. Because the GFX is fixed-function, the filter modes are selected by the texture environment / texture-unit registers rather than by a shader.</p>
+      <h2>7. Texture environment (TEV)</h2>
+      <p>The TEV is the per-pixel <strong>colour & alpha combine</strong> stage — the "pixel shader equivalent" of the GFX. It runs <strong>up to 16 independent stages</strong>, each of which computes a colour and an alpha result from up to four inputs (previous stage result, texel, rasterized colour, a constant) using a selectable operator:</p>
+      <ul>
+        <li>Inputs are selected from the four colour registers (<code>cc0</code>–<code>cc3</code>), the two colour channels (<code>txc</code>/<code>txa</code>), the rasterized colour, or constants.</li>
+        <li>Operator: bias (±0.5, 0), add / subtract, clamp to either range, and a left/right shift.</li>
+        <li>Alpha combines work the same way, with a comparison mode and a component swap.</li>
+        <li>The result feeds <strong>fog</strong> (none / linear / exponential / exponential-squared / backward-exponential / backward-exponential-squared), <strong>indirect</strong> texturing, and a <strong>constant</strong> colour register bank used as the "pixel" colour. A <strong>Z texture</strong> stage can add to or replace the reference Z with a texel value, and a <strong>range adjustment</strong> supports the 16-bit colour mode (Rev B).</li>
+        <li>Final per-pixel logic: alpha function (per-channel compare + AND/OR/XOR/XNOR), so the TEV can implement the classic opacity/alpha tests without a depth read.</li>
+      </ul>
+      <p>The number of active TEV stages, the number of bump stages and the flat-shading / multi-sample mode are all set in the shared <strong>GEN_MODE</strong> register.</p>
+      <h2>8. Pixel engine (PE) & embedded framebuffer (EFB)</h2>
+      <p>The PE is the last stage of the geometry path and owns the on-chip <strong>EFB</strong>.</p>
+      <h3>8.1 Z & colour compare</h3>
+      <p>For every fragment the PE compares against the existing depth and colour. The Z function (never / less / equal / less-equal / greater / not-equal / greater-equal / always), Z mask, and the Z <strong>format</strong> (linear, or the reversed formats used for early-Z / 16-bit depth) are set by <code>PE_ZMODE</code>/<code>PE_CONTROL</code>. The colour path supports <strong>blend</strong> (source/dest factors, add/subtract, constant alpha), a <strong>logic operation</strong> (all 16 standard raster ops), colour & alpha write masks, and dithering. The EFB pixel type (RGB8, RGBA6, RGB_AA, Z, or a YUV output form for the copy path) is selected in the control register.</p>
+      <h3>8.2 Embedded frame buffer (EFB)</h3>
+      <p>The EFB is a <strong>2 MB</strong> on-chip frame buffer with a native resolution of about <strong>640 × 528</strong>. All drawing lands here. It is a fast 1T-SRAM-style SRAM on the die (not main memory) and is the only place rasterization output is written. It supports multi-sampling / anti-aliasing (a quad centred on the pixel, samples configured in the <code>GEN_MSLOCn</code> registers), an <strong>early-Z</strong> / fast-Z path, and per-field masking for interlaced rendering.</p>
+      <h3>8.3 EFB → XFB copy</h3>
+      <p>The PE <strong>copy</strong> engine (PEC) moves the EFB to an external framebuffer (XFB) in main memory. It can:</p>
+      <ul>
+        <li>select the source rectangle and the destination base/stride,</li>
+        <li><strong>scale</strong> the image,</li>
+        <li>convert formats (RGB8 / RGBA6 / RGB·AA, or YUV / YUV420 for the video path), and</li>
+        <li>either <strong>copy to display</strong> (a clean framebuffer) or <strong>copy to texture</strong> (back into TMEM for re-use), with optional clear colour / Z, a vertical filter, gamma correction and interlaced/odd-even field selection.</li>
+      </ul>
+      <p>The copy uses the 32-byte cache-line main-memory interface for its writes.</p>
+      <h2>9. Video interface (VI)</h2>
+      <p>The VI is the interface between the GFX output and the TV encoder. It reads the XFB from main memory, unpacks the YUV 4:2:2 data, optionally runs it through a horizontal resampler / anti-alias filter, and clocks it out to the digital encoder with all the NTSC / PAL / M-PAL synchronisation and blanking. It also provides the vertical retrace interrupt, the light-gun position latch and the 480p progressive mode.</p>
+      <p>The VI is specified separately and in full at the register level in <a href="video-interface.html">video-interface.md</a> — see that page for the complete register map, timing tables and emulator model.</p>
+      <h2>10. State & register organisation</h2>
+      <p>GFX state is split into three register spaces, written through the FIFO command stream (the CPU only touches them via the PI FIFO / display-list commands):</p>
+      <ul>
+        <li><strong>CP registers</strong> — command-processor control (FIFO pointers, watermark, vertex format, array base/stride, matrix index). Partially mirrored into the CPU-resident register map.</li>
+        <li><strong>XF registers</strong> — matrix / light memory and all the transform, lighting and texture-coordinate controls.</li>
+        <li><strong>Bypass (BP) registers</strong> — the bulk of the pipeline stage registers, so called because they are written <em>bypassing</em> the XF. They are organised into groups: GEN (shared), SU/RAS, PE, and the texture (TX) and TEV groups, plus the pixel-emitter "finish" registers.</li>
+      </ul>
+      <p>The GFX has no general-purpose memory-mapped register window of its own; the address that the CPU uses (<code>0x0C000000</code> CP, <code>0x0C001000</code> PE, <code>0x0C002000</code> VI, <code>0x0C003000</code> PI, <code>0x0C004000</code> MI, ...) exposes the parts of the GFX that the Gekko must reach directly, while the rest of the pipeline state is driven purely through the command FIFO.</p>
+      <h2>11. Key parameters (summary)</h2>
+      <table>
+        <tr><th>Parameter</th><th>Value</th></tr>
+        <tr><td>Pipeline</td><td>fixed-function (no programmable shaders); microcoded transform sequencer</td></tr>
+        <tr><td>Command interface</td><td>PI FIFO → command processor; CP FIFO + display-list call FIFO</td></tr>
+        <tr><td>Vertex cache</td><td>8 KB, 8-way set associative</td></tr>
+        <tr><td>Transform</td><td>fixed-point; 8 lights; 64×4 + 32×3 + 64×4 matrix RAM; up to 8 texture coords</td></tr>
+        <tr><td>Rasterization</td><td>3 rasterizers (edge / texture-coord / colour); points, lines, triangles, strips, fans, quads</td></tr>
+        <tr><td>Texture memory (TMEM)</td><td>512 KB; max texture 1024×1024; S3TC/CMPR, CI/I/IA/RGB565/RGB5A3/RGBA8 + TLUT</td></tr>
+        <tr><td>Texture filter</td><td>point / linear / mip-mapped; anisotropic up to 4×; wrap clamp/mirror/repeat</td></tr>
+        <tr><td>TEV stages</td><td>up to 16 colour & alpha combine stages; fog; indirect & Z texturing</td></tr>
+        <tr><td>Pixel engine</td><td>24-bit Z & 24-bit RGB; blend + logic ops + alpha function; multi-sample / AA</td></tr>
+        <tr><td>Embedded framebuffer (EFB)</td><td>2 MB on-chip; native ≈ 640×528; copy→XFB (display or texture)</td></tr>
+        <tr><td>External framebuffer (XFB)</td><td>in main memory, YUV 4:2:2, read by the VI</td></tr>
+        <tr><td>Video output</td><td>via the VI to an external encoder; NTSC / PAL / M-PAL / 480p</td></tr>
+        <tr><td>Throughput</td><td>≈ 6–12 M polygons/s under real game conditions</td></tr>
+      </table>
+      <h2>12. Related specifications</h2>
+      <ul>
+        <li><a href="flipper.html">flipper.md</a> — the Flipper chipset as a whole (northbridge, GPU, DSP, I/O).</li>
+        <li><a href="processor-interface.html">processor-interface.md</a> — how the Gekko reaches the GFX (PI FIFO, register window, memory map).</li>
+        <li><a href="memory-interface.html">memory-interface.md</a> — the arbitrated main-memory path the GFX masters use.</li>
+        <li><a href="video-interface.html">video-interface.md</a> — the VI scan-out stage of the pipeline.</li>
+        <li><a href="clock-generator.html">clock-generator.md</a> — the clock domains the GFX runs in.</li>
+      </ul>
+      <h2>13. References</h2>
+      <ul>
+        <li><code>HW/Flipper_ASIC_Block_Diagram.png</code> — Flipper internal block diagram.</li>
+        <li><code>HW/GraphicsSystem/GFX.md</code> — GFX pipeline detail (command processor, XF, setup, rasterizer, TEV, PE register space).</li>
+        <li><code>HW/GraphicsSystem/GFX_Interconnect.png</code>, <code>GFX_Internal.png</code>, <code>GFX_FIFO.png</code>, <code>GFX_Primitives.png</code> — GFX interconnect, internal architecture, FIFO and primitive diagrams.</li>
+        <li><code>HW/GraphicsSystem/XF_Block_Diagram.png</code> — the transform-unit block diagram.</li>
+        <li><code>RE/Flipper_ASIC/flipper_floorplan.jpg</code> — Flipper die floor plan showing the size of each GFX area.</li>
+        <li>US Patents 6,466,218 (Graphics Interface), 6,717,577 (Vertex Cache), 7,199,710 (GX FIFO), 6,937,245 / 6,999,100 (PE EFB / copy), 6,619,804 (Z-clamping), 6,636,214 (Hidden surface processing), 6,709,458 (Indirect Textures), 6,825,851 (Bump Mapping).</li>
+        <li><code>HW/acronyms.txt</code> — GFX, GX, EFB, XFB, TMEM, CP, XF, SU, RAS, TEV, PE glossary.</li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
