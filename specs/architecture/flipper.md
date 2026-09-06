@@ -28,7 +28,7 @@ Flipper internal blocks (see `HW/Flipper_ASIC_Block_Diagram.png`):
 | **TF** | Texture filter (bilinear/trilinear, etc.) |
 | **TEV** (Texture Environment) | Per-pixel color/alpha combine, fog, indirect texturing |
 | **PE** (Pixel Engine) | Color/Z compare, blending, the **eFB** embedded framebuffer, framebuffer copy/scaling to XFB |
-| **IO** | `IO_PI` (register I/F), SI, AI, EXI, DI, IO_MEM (peripheral DMA) |
+| **IO** (IO-top) | the self-contained I/O module: `IO_PI` (16-bit register/CPU interface), `IO_MEM` (shared 64-bit main-memory port + round-robin IO-DMA arbiter), and the four peripheral sub-blocks — **DI**, **SI**, **EXI** (3 channels), **AI** — each with its own PI interrupt |
 | **VI** (Video Interface) | Framebuffer readout, H/V scaler, TV encoding |
 | **DSP** (audio DSP) | 16-bit signal processor for audio |
 

@@ -45,6 +45,15 @@
       <p>This is the register-level, emulator-focused specification for the <strong>EXI block</strong> itself. The facts are drawn from the repository's hardware documentation, the Flipper EXI RTL, the register-definition (FDL) files and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a lock, a timing edge, the exact meaning of a field — it is called out as such. A high-level overview of EXI and SI (the sibling <strong>Serial Interface</strong>) also lives in <a href="peripherals.html">peripherals.md</a>; this document is the register-accurate one and supersedes the register table there.</p>
       <h2>1. Overview</h2>
       <p>The EXI block is instantiated in Flipper as <code>io_Exi</code> (reached through the IO register space, IO-module <code>io_addr_exi</code>). It contains three channel sub-instances, <code>io_Exi0Ch</code>, <code>io_Exi1Ch</code> and <code>io_Exi2Ch</code>, each of which is built from the same set of sub-blocks: a control/status register (<strong>CSR</strong> or <strong>CPR</strong>), a serial transfer engine (<strong>Xfer</strong>), a DMA engine (<strong>Dma</strong>), a chip-select/clock generator (<strong>Clk</strong>), and a master state machine (<strong>SM</strong>) that decides between the three transfer types — immediate, DMA, and (for channel 0) the boot-ROM read. Channel 0 additionally instantiates the ROM state machine (<strong>ROM</strong>) and the key/descrambler state machine (<strong>Key</strong> / <strong>LFSR</strong>).</p>
+      <p>It is one of the four peripheral sub-blocks of the Flipper <strong>I/O (<code>io</code>) module</strong> (the others being DI, SI and AI). The <code>io</code> block also contains the 16-bit register interface (<code>io_Pi</code>, which decodes the <code>0x0C006000</code>–<code>0x0C006C00</code> module bases) and a shared main-memory port (<code>io_Mem</code>) with a <strong>round-robin IO-DMA arbiter</strong> that the EXI's three DMA engines contend for (along with the DI); each peripheral sub-block has its own interrupt (<code>exi_piInt</code> here) that PI aggregates.</p>
+      <pre><code>io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)
+├── io_Si    — SI  (serial / controller interface)
+├── io_Exi   — EXI (expansion, 3 channels)                  « this block »
+├── io_Ai_top— AI  (audio interface)
+└── io_TstMux— test/scan mux and pad output-enable control</code></pre>
       <h3>1.1 Channels and their role</h3>
       <table>
         <tr><th>Channel</th><th>Base</th><th>Typical devices</th></tr>

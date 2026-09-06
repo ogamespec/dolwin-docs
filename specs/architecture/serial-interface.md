@@ -30,6 +30,27 @@ buffering for that port. A single polling counter is shared by all four channels
 and decides *when* a channel is polled; each channel has its own state machine that
 implements the transfer itself.
 
+It is one of the four peripheral sub-blocks of the Flipper **I/O (`io`) module**
+(the others being DI, EXI and AI). The `io` block also contains the 16-bit register
+interface (`io_Pi`, which decodes the `0x0C006000`–`0x0C006C00` module bases) and a
+shared main-memory port (`io_Mem`) with a round-robin IO-DMA arbiter; each
+peripheral sub-block has its own interrupt (`si_piInt` here) that PI aggregates. The
+SI does **not** use the shared memory port — it is a purely PIO-driven block (the OS
+reads and writes the registers directly), so it is the only one of the four with no
+DMA path.
+
+```
+io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)
+├── io_Si    — SI  (serial / controller interface)          « this block »
+├── io_Exi   — EXI (expansion, 3 channels)
+├── io_Ai_top— AI  (audio interface)
+└── io_TstMux— test/scan mux and pad output-enable control
+```
+
+
 ### 1.1 Sub-blocks
 
 | Block | Role |

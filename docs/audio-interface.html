@@ -55,6 +55,15 @@
       </ul>
       <p>and produces one 16-bit stereo sample stream that is shifted out to the stereo DAC on <code>aid</code> / <code>ailr</code> / <code>aiclk</code>. To do this it runs the streaming input through a sample-rate converter (so the stream is always 48 kHz at the mixer), scales it by the volume registers, <strong>adds</strong> the DSP output, saturates the sum, and serialises the result.</p>
       <p>The AI register block is reached through the <strong>IO-module</strong> interface of the Processor Interface: it is IO module <code>io_addr_ai</code> (selected by <code>PiAddr[11:10] == 3</code>), so its registers sit at physical base <strong><code>0x0C006C00</code></strong> (uncached alias <code>0xCC006C00</code>). The register decode inside the AI uses <code>PiAddr[4:2]</code>; each register is 32-bit internally, at byte offsets <code>index*4</code>.</p>
+      <p>It is one of the four peripheral sub-blocks of the Flipper <strong>I/O (<code>io</code>) module</strong> (the others being DI, SI and EXI). The <code>io</code> block also contains the 16-bit register interface (<code>io_Pi</code>, which decodes the <code>0x0C006000</code>–<code>0x0C006C00</code> module bases) and a shared main-memory port (<code>io_Mem</code>) with a round-robin IO-DMA arbiter; each peripheral sub-block has its own interrupt (<code>ai_piInt</code> here) that PI aggregates. The AI's register block is in <code>io</code>, but its <strong>audio DMA</strong> is not: that lives in the DSP/audio register space and is described separately to keep the two sides of the audio path distinct.</p>
+      <pre><code>io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)
+├── io_Si    — SI  (serial / controller interface)
+├── io_Exi   — EXI (expansion, 3 channels)
+├── io_Ai_top— AI  (audio interface)                        « this block »
+└── io_TstMux— test/scan mux and pad output-enable control</code></pre>
       <h3>1.1 Sub-blocks</h3>
       <table>
         <tr><th>Block</th><th>Role</th></tr>

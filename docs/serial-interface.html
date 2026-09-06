@@ -46,6 +46,15 @@
       <p>The SI is one of the four blocks in the Flipper <strong>IO-module</strong> space (with DI, EXI and AI). It is decoded as IO module <code>io_addr_si</code> (<code>PiAddr[11:10] == 1</code>) and sits at <strong>physical base <code>0x0C006400</code></strong> (uncached alias <strong><code>0xCC006400</code></strong>).</p>
       <h2>1. Overview</h2>
       <p>The SI is a small, heavily state-machine-driven block. It has <strong>four identical channels</strong>; each channel owns one controller port and the full command/response buffering for that port. A single polling counter is shared by all four channels and decides <em>when</em> a channel is polled; each channel has its own state machine that implements the transfer itself.</p>
+      <p>It is one of the four peripheral sub-blocks of the Flipper <strong>I/O (<code>io</code>) module</strong> (the others being DI, EXI and AI). The <code>io</code> block also contains the 16-bit register interface (<code>io_Pi</code>, which decodes the <code>0x0C006000</code>–<code>0x0C006C00</code> module bases) and a shared main-memory port (<code>io_Mem</code>) with a round-robin IO-DMA arbiter; each peripheral sub-block has its own interrupt (<code>si_piInt</code> here) that PI aggregates. The SI does <strong>not</strong> use the shared memory port — it is a purely PIO-driven block (the OS reads and writes the registers directly), so it is the only one of the four with no DMA path.</p>
+      <pre><code>io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)
+├── io_Si    — SI  (serial / controller interface)          « this block »
+├── io_Exi   — EXI (expansion, 3 channels)
+├── io_Ai_top— AI  (audio interface)
+└── io_TstMux— test/scan mux and pad output-enable control</code></pre>
       <h3>1.1 Sub-blocks</h3>
       <table>
         <tr><th>Block</th><th>Role</th></tr>

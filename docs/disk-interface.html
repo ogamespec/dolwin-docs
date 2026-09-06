@@ -45,7 +45,29 @@
       <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation, the Flipper RTL and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a time-out, the exact latitude of a field, or an ambiguity in the original design note — it is called out as such. In every case the RTL is taken as authoritative over the published register descriptions.</p>
       <h2>1. Overview</h2>
       <p>The DI is a <strong>slave</strong> on the Flipper register bus and a <strong>master</strong> on the main-memory interface. It presents one interrupt (<code>di_piInt</code>, aggregated by the PI as <code>DIINT</code>) and drives the pins to the drive. Software never touches the bus directly; it only writes register values and lets the DI sequence the handshake.</p>
-      <h3>1.1 Sub-blocks</h3>
+      <h3>1.1 Position in the IO-top subsystem</h3>
+      <p>The four self-contained peripheral interfaces — DI, SI, EXI and AI — are all instantiations of a single <strong>I/O (<code>io</code>) module</strong> inside Flipper. That <code>io</code> block contains, apart from its peripheral sub-blocks:</p>
+      <ul>
+        <li>an <strong>IO register / CPU interface</strong> (<code>io_Pi</code>) — decodes the four module bases</li>
+      </ul>
+      <p>(<code>0x0C006000</code> DI, <code>0x0C006400</code> SI, <code>0x0C006800</code> EXI, <code>0x0C006C00</code> AI), carries the 16-bit big-endian register data and multiplexes each sub-block's read data back to the Processor Interface;</p>
+      <ul>
+        <li>a <strong>shared main-memory port</strong> (<code>io_Mem</code>) — one 64-bit, 32-byte-line port to the</li>
+      </ul>
+      <p>Flipper memory controller, shared by a <strong>round-robin IO-DMA arbiter</strong> between the DI and the three EXI channels;</p>
+      <ul>
+        <li>the four <strong>peripheral sub-blocks</strong> — DI, SI, EXI (3 channels) and AI — each with</li>
+      </ul>
+      <p>its own interrupt line (<code>di_piInt</code>, <code>si_piInt</code>, <code>exi_piInt</code>, <code>ai_piInt</code>) that PI aggregates into <code>DIINT</code>/<code>SIINT</code>/<code>EXINT</code>/<code>AIINT</code>.</p>
+      <pre><code>io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)          « this block »
+├── io_Si    — SI  (serial / controller interface)
+├── io_Exi   — EXI (expansion, 3 channels)
+├── io_Ai_top— AI  (audio interface)
+└── io_TstMux— test/scan mux and pad output-enable control</code></pre>
+      <h3>1.2 Sub-blocks</h3>
       <p>The <code>io</code> block instantiates the DI as <code>io_di</code>, which is built from five sub-modules that together implement the whole interface:</p>
       <table>
         <tr><th>Module</th><th>Role</th></tr>
@@ -58,7 +80,7 @@
       <p>Data flow for a <strong>read from disc</strong> (the common case):</p>
       <pre><code>drive (DIDD) ──io_didctl──▶ io_dififo ── (32-byte full line) ──io_dimctl──▶ main memory</code></pre>
       <p>For a <strong>write to disc</strong> the same FIFO is filled from memory by <code>io_dimctl</code> and drained to the drive by <code>io_didctl</code>.</p>
-      <h3>1.2 Connection to the drive</h3>
+      <h3>1.3 Connection to the drive</h3>
       <p>The DI connects to the drive through the <strong>DDU connector (P9)</strong> on the motherboard. The drive is powered (5 V), ground and the DI mains signals plus the separate DVD-Audio pins; <code>MONI</code>/<code>MONOUT</code> on the connector are drive monitor lines not used by the DI itself. Full connector detail is in the external-interface hardware documentation; the signal-level description is in §2.</p>
       <h2>2. External pins / signals</h2>
       <p>All DI mains signals are <strong>LVCMOS</strong>. <code>DIBRK</code> is open-drain (output) and needs an external pull-up. Data flows over the <code>DIDD[7:0]</code> bus whose direction is set by <code>DIDIR</code>; the two strobes qualify data in opposite directions.</p>
@@ -151,8 +173,33 @@
       </ul>
       <p>not report "transfer complete").</p>
       <p><code>DIERR</code> is edge-triggered, so <code>DEINT</code> reflects the <strong>event</strong>, not the level. The drive deasserts <code>DIERR</code> only after receiving the next command (typically a request-sense that the software sends in response to the error interrupt).</p>
-      <h3>3.7 Typical drive command encodings</h3>
-      <p>The system library's low-level routines show the command-packet layout. For a DMA <strong>read</strong> the packet is <code>0xA8 00 00 subcmd</code> in <code>DICMDBUF0</code>, the sector offset <code>&#48;&#48; 2</code> in <code>DICMDBUF1</code>, and the byte length in <code>DICMDBUF2</code>; the control write is <code>DICR = DMA | TSTART</code>. Control-only commands write just the opcode plus (for some) parameters and start with only <code>TSTART</code> (command-only transfer). Examples seen in the low-level code include a read (subcmd 0), a disc-ID read (subcmd 0x40), a seek, a stop-motor, a request-error, an inquiry, a DVD-audio-stream control and a DVD-audio-buffer config. The exact opcode bytes and parameter fields live in the reverse-engineering notes; only the register-level mechanism is specified here.</p>
+      <h3>3.7 The drive command set</h3>
+      <p>The drive is a command-driven device: the host writes a <strong>12-byte</strong> packet into <code>DICMDBUF0..2</code> (big-endian, so byte 0 of the packet is bits <code>[31:24]</code> of <code>DICMDBUF0</code>) and sets <code>DICR[TSTART]</code>. An opcode is the first command byte (CMDBYTE0). There are three kinds of command, distinguished by how they move data:</p>
+      <ul>
+        <li><strong>DMA</strong> — bulk data moves between main memory and the drive. <code>DIMAR</code>/<code>DILENGTH</code></li>
+      </ul>
+      <p>are set and <code>DICR = DMA | TSTART</code>.</p>
+      <ul>
+        <li><strong>Immediate (command-only)</strong> — only the command packet is sent; no data moves</li>
+      </ul>
+      <p>through memory. <code>DICR = TSTART</code> only. The io-top specification notes that the only packet command which uses the immediate <strong>data buffer</strong> (<code>DIIMMBUF</code>) is a drive <strong>register-access</strong> command; the other control commands transfer no data at all.</p>
+      <ul>
+        <li>The command set observed in the system library is:</li>
+      </ul>
+      <table>
+        <tr><th>Opcode</th><th>Command</th><th>Data</th><th>Packet / notes</th></tr>
+        <tr><td><code>0x12</code></td><td>Inquiry</td><td>DMA</td><td>Read the drive manufacturer info (<code>DVDDriveInfo</code> — revision, device code, release date). <code>CMDBUF2</code> = length, <code>MAR</code>/<code>LEN</code> = destination, <code>CR = DMA | TSTART</code></td></tr>
+        <tr><td><code>0xA8</code></td><td>Read</td><td>DMA</td><td>Read disc data. <code>subcmd</code> (<code>CMDBUF3</code>), <code>CMDBUF1 = offset &#48;&#48; 2</code>, <code>CMDBUF2</code> = byte length, <code>MAR</code>/<code>LEN</code> = destination, <code>CR = DMA | TSTART</code></td></tr>
+        <tr><td><code>0xA8</code> sub <code>0x40</code></td><td>Read disc ID</td><td>DMA</td><td>Read the 32-byte disc header (<code>DVDDiskID</code>) from the start of the disc; otherwise the same as <code>0xA8</code></td></tr>
+        <tr><td><code>0xAB</code></td><td>Seek</td><td>none</td><td>Move the pickup to the sector containing <code>offset</code>. <code>CMDBUF1 = offset &#48;&#48; 2</code>, <code>CR = TSTART</code></td></tr>
+        <tr><td><code>0xE0</code></td><td>Request error</td><td>none</td><td>Retrieve the last drive error / sense status. <code>CR = TSTART</code></td></tr>
+        <tr><td><code>0xE1</code></td><td>DVD audio stream</td><td>none</td><td>Start/config a DVD-Audio stream. <code>subcmd</code> selects the stream, <code>CMDBUF1 = offset &#48;&#48; 2</code>, <code>CMDBUF2</code> = length, <code>CR = TSTART</code></td></tr>
+        <tr><td><code>0xE2</code></td><td>Request audio status</td><td>none</td><td>Request DVD-Audio stream status. <code>subcmd</code> selects what is reported, <code>CR = TSTART</code></td></tr>
+        <tr><td><code>0xE3</code></td><td>Stop motor</td><td>none</td><td>Stop the spindle. <code>CR = TSTART</code></td></tr>
+        <tr><td><code>0xE4</code></td><td>Audio buffer config</td><td>none</td><td>Configure the streaming-audio buffer: <code>0xE4000000 | (enable ? 0x1000 : 0) | size</code>; low nibble of <code>size</code> = buffer size (≤ 16), high nibble = trigger (0–2), the <code>0x1000</code> bit sets the enable flag. <code>CR = TSTART</code></td></tr>
+      </table>
+      <p>The <code>0xA8</code> <strong>read</strong> sub-command is <code>CMDBUF3</code> (bits <code>[7:0]</code> of <code>DICMDBUF0</code>); the usual value is <code>0x00</code> for a normal data read and <code>0x40</code> for the disc-ID read. <code>DMA</code> commands are initiated with <code>CR = DMA | TSTART</code>; control commands with <code>CR = TSTART</code> only.</p>
+      <p>Address/alignment constraints enforced by the driver (and expected by the drive) are worth modelling: the <code>offset</code> is byte-granular but must be a multiple of 4 and is transmitted as <code>offset &#48;&#48; 2</code> in <code>CMDBUF1</code>; the data <code>length</code> must be a multiple of 32 (one DMA block) and is given as a byte count; the destination address in <code>DIMAR</code> must be 32-byte aligned. An <code>0xA8</code> offset beyond the media, or an unsupported sub-command, is reported back through the drive-error interrupt rather than through the register interface.</p>
       <h2>4. DMA transfers</h2>
       <p><code>io_dimctl</code> is the DMA engine. It is a bus master on the main-memory interface and transfers data in <strong>32-byte (cache-line) transactions</strong>, independent of the requested length. It keeps a <strong>double buffer</strong> so the drive side and the memory side can proceed independently; on a DVD→memory transfer the FIFO is filled by the device state machine and drained a full line at a time to memory, on a memory→DVD transfer the buffers are filled from memory and drained to the FIFO.</p>
       <h3>4.1 <code>DIMAR</code> and <code>DILENGTH</code></h3>

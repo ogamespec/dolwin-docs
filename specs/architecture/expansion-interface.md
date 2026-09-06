@@ -31,6 +31,24 @@ immediate, DMA, and (for channel 0) the boot-ROM read. Channel 0 additionally
 instantiates the ROM state machine (**ROM**) and the key/descrambler state machine
 (**Key** / **LFSR**).
 
+It is one of the four peripheral sub-blocks of the Flipper **I/O (`io`) module**
+(the others being DI, SI and AI). The `io` block also contains the 16-bit register
+interface (`io_Pi`, which decodes the `0x0C006000`–`0x0C006C00` module bases) and a
+shared main-memory port (`io_Mem`) with a **round-robin IO-DMA arbiter** that the
+EXI's three DMA engines contend for (along with the DI); each peripheral sub-block
+has its own interrupt (`exi_piInt` here) that PI aggregates.
+
+```
+io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)
+├── io_Si    — SI  (serial / controller interface)
+├── io_Exi   — EXI (expansion, 3 channels)                  « this block »
+├── io_Ai_top— AI  (audio interface)
+└── io_TstMux— test/scan mux and pad output-enable control
+```
+
 ### 1.1 Channels and their role
 
 | Channel | Base | Typical devices |
