@@ -63,20 +63,8 @@
         <tr><td><strong>DSP</strong> (audio DSP)</td><td>16-bit signal processor for audio</td></tr>
       </table>
       <p>The complete register-level, emulator-focused description of the Processor Interface — the Gekko 60x bus, the 16-bit register access, the interrupt controller, PI errors, the physical memory map and the Gekko reset — is in <a href="processor-interface.html">processor-interface.md</a>.</p>
-      <h2>2. Memory interface (MI) and memory protection</h2>
-      <p>The memory interface is the arbitration hub. Its bus users (masters) are:</p>
-      <ul>
-        <li><strong>PI</strong> (the Gekko)</li>
-        <li><strong>CP</strong> (command processor / GFX)</li>
-        <li><strong>TC</strong> (texture cache)</li>
-        <li><strong>PE</strong> (pixel engine, for EFB reads/writes and copies)</li>
-        <li><strong>IO</strong> (peripheral DMA)</li>
-        <li><strong>DSP</strong></li>
-        <li><strong>VI</strong> (video frame buffer reads)</li>
-      </ul>
-      <p>plus a write-buffer path and an external controller (<code>mem_extctl</code>) that owns the ARAM SDRAM.</p>
-      <p>The complete register-level, emulator-focused description of the memory interface — the arbiter, the per-master queues and data paths, write buffering and coherency, memory protection, and the external 1T-SRAM ("Splash") interface — is in <a href="memory-interface.html">memory-interface.md</a>.</p>
-      <h3>2.1 Memory map (physical, Flipper)</h3>
+      <h3>1.1 Physical memory map (decoded by the PI)</h3>
+      <p>The CPU's physical address map is decoded by the <strong>Processor Interface (PI)</strong> — PI is the only CPU path into the console, and it routes each address to main memory, the embedded framebuffer, the register space, the graphics FIFO, or the boot ROM. (MI is only the arbiter that services the memory-master requests; it does not define this map. The full PI decode is in <a href="processor-interface.html">processor-interface.md</a> §6.)</p>
       <table>
         <tr><th>Address</th><th>Size</th><th>Resource</th></tr>
         <tr><td><code>0x00000000</code></td><td>24 MB</td><td>Main RAM (1T-SRAM)</td></tr>
@@ -106,9 +94,22 @@
       </ul>
       <p>the audio output path).</p>
       <p>A separate <em>effective</em>-address map (as seen by the CPU through the MMU) mirrors this and adds the write-back/write-through (cached/uncached) aliases of main RAM at <code>0x80000000</code> / <code>0xC0000000</code> and the locked-cache scratchpad at <code>0xE0000000</code>.</p>
-      <h3>2.2 Memory protection</h3>
+      <h2>2. Memory interface (MI) and memory protection</h2>
+      <p>The memory interface is the arbitration hub. Its bus users (masters) are:</p>
+      <ul>
+        <li><strong>PI</strong> (the Gekko)</li>
+        <li><strong>CP</strong> (command processor / GFX)</li>
+        <li><strong>TC</strong> (texture cache)</li>
+        <li><strong>PE</strong> (pixel engine, for EFB reads/writes and copies)</li>
+        <li><strong>IO</strong> (peripheral DMA)</li>
+        <li><strong>DSP</strong></li>
+        <li><strong>VI</strong> (video frame buffer reads)</li>
+      </ul>
+      <p>plus a write-buffer path and an external controller (<code>mem_extctl</code>) that owns the ARAM SDRAM.</p>
+      <p>The complete register-level, emulator-focused description of the memory interface — the arbiter, the per-master queues and data paths, write buffering and coherency, memory protection, and the external 1T-SRAM ("Splash") interface — is in <a href="memory-interface.html">memory-interface.md</a>.</p>
+      <h3>2.1 Memory protection</h3>
       <p>MI provides protection for up to <strong>4 regions</strong> of main memory, each a 1024-byte page with one of four access modes (deny / read-only / write-only / full). A violation raises one of four dedicated interrupts (<code>MEM_0</code>–<code>MEM_3</code>).</p>
-      <h3>2.3 Undocumented store quirk</h3>
+      <h3>2.2 Undocumented store quirk</h3>
       <p>The main-memory bus only carries 64-bit transactions. An <strong>uncached byte</strong> or halfword store therefore ends up writing a full 8-byte aligned block (the byte is replicated). This is harmless for cached accesses (which use cache lines) but means <code>memset()</code> on uncached memory fills incorrectly. Software exploiting the replication can clear 8 bytes with one byte store and is noticeably faster than <code>memset</code>.</p>
       <h2>3. Graphics processor (GFX)</h2>
       <p>The GFX is a <strong>fixed-function</strong> pipeline (no programmable shading) with three main stages: command processor, geometry/lighting, and rasterizer.</p>
