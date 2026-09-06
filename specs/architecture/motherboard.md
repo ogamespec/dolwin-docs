@@ -5,7 +5,7 @@
 >
 > This document is the architectural overview of the physical board. It is meant
 > as the foundation for the component-level specifications (Gekko, Flipper, the
-> disc drive, and the EXI/SI peripherals) that follow in this `architecture/`
+> disk drive, and the EXI/SI peripherals) that follow in this `architecture/`
 > folder.
 
 ## 1. Board layout
@@ -22,7 +22,7 @@ ASIC called **Flipper**; everything else on the board hangs off it.
 | Main memory | 2 × 12 MB MoSys **1T-SRAM** (codename "Splash") | 24 MB main RAM, 64-bit interface |
 | Auxiliary memory | 16 MB DRAM (**ARAM**) | DSP/audio + texture streaming memory |
 | Boot ROM + RTC + SRAM | 2 MB encrypted boot chip | IPL, system menu, RTC, settings SRAM |
-| Disc drive | **DVD drive unit** (DDU) | Matsushita 3" mini-DVD, intelligent device |
+| Disk drive | **DVD drive unit** (DDU) | Matsushita 3" mini-DVD, intelligent device |
 | Clocking | 27 MHz crystal + clock generator | System + video clock sources |
 
 **Total system memory** is therefore 24 MB of fast 1T-SRAM plus 16 MB of slower
@@ -54,7 +54,7 @@ for the connector/signal-level sections elsewhere in this documentation.
 | CPU interface | `cpua[31:0]`, `cpud[63:0]`, `cpuintb`, `cputsiz[2:0]`, `cputt[4:0]`, `cputbstb`, `cputab`, `cputsb`, `cpuaackb`, `cpurstb`, `cpuref` | 32-bit address / 64-bit data, interrupt and reset to Gekko |
 | Main memory (1T-SRAM) | `mema[21:0]`, `memd[63:0]`, `memclk`, `memclkb`, `memckq[3:0]`, `memads[1:0]b`, `memmsk[1:0]`, `memref`, `memrefsh`, `memrstb`, `memrw` | 64-bit data, 22-bit address |
 | ARAM (SDRAM) | `sda[12:0]`, `sdd[7:0]`, `sdba[1:0]`, `sdclk`, `sdclkfbk`, `sdcsb`, `sdcasb`, `sdrasb`, `sdweb`, `sddqm`, `sdintb` | 8-bit data, dedicated SDRAM pins |
-| Disc drive (DI) | `did[7:0]`, `didir`, `dihstrbb`, `didstrbb`, `dierrb`, `dibrk`, `dicover`, `dirstb` | Command/data to the DVD drive |
+| Disk drive (DI) | `did[7:0]`, `didir`, `dihstrbb`, `didstrbb`, `dierrb`, `dibrk`, `dicover`, `dirstb` | Command/data to the DVD drive |
 | Audio out (AI) | `aid`, `ailr`, `aiclk` | Serial PCM to the audio DAC |
 | Audio stream in (AIS) | `aisd`, `aislr`, `aisclk` | Streamed DVD audio into Flipper |
 | Video out (VI) | `vid[7:0]`, `viclk27`, `viclk54`, `viclkin`, `vicr`, `visel` | 8-bit digital video, 27/54 MHz |
@@ -68,10 +68,10 @@ for the connector/signal-level sections elsewhere in this documentation.
 ## 4. System connectors and their signal level
 
 The board exposes the following user-visible connectors. Signal-level detail for
-each is described in the linked sections; the disc-drive connector pinout appears
+each is described in the linked sections; the disk-drive connector pinout appears
 in the *Disk Drive* document.
 
-### 4.1 Disc drive connector (P9)
+### 4.1 Disk drive connector (P9)
 
 A 32-pin header carries both the drive control/data signals and three power pins
 (+5 V on pads 2, 4, 6, 8) plus grounds. The non-power pins are:

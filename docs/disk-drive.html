@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GameCube Hardware — Disc Drive</title>
-  <meta name="description" content="GameCube disc drive: 3 inch mini-DVD, CAV, copy protection, intelligent MN-10200 drive, DI interface and signals, streamed DVD audio." />
+  <title>GameCube Hardware — Disk Drive</title>
+  <meta name="description" content="GameCube disk drive: 3 inch mini-DVD, CAV, copy protection, intelligent MN-10200 drive, DI interface and signals, streamed DVD audio." />
   <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
   <link rel="stylesheet" href="assets/css/style.css" />
   <link rel="icon" href="assets/favicon.ico" sizes="any" />
@@ -29,8 +29,8 @@
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html">Processor Interface</a>
-      <a href="disk-drive.html">Disc Drive</a>
-      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="disk-drive.html">Disk Drive</a>
+      <a href="disk-interface.html">Disk Interface (DI)</a>
       <a href="peripherals.html">Peripherals</a>
       <a href="serial-interface.html">Serial Interface (SI)</a>
       <a href="expansion-interface.html">Expansion Interface (EXI)</a>
@@ -43,10 +43,10 @@
 
   <main class="wrap">
     <article>
-      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Disc Drive</p>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / Disk Drive</p>
       <h1>Disk Drive</h1>
       <blockquote>The console reads games from a proprietary <strong>3" mini-DVD</strong>
-        (Nintendo's "GameCube Game Disc"). The drive is an intelligent,
+        (Nintendo's "GameCube Game Disk"). The drive is an intelligent,
         command-driven device built around a small CPU with firmware, developed
         with Matsushita, and controlled by the Flipper <strong>Disk Interface (DI)</strong>.</blockquote>
 
@@ -62,7 +62,7 @@
       </table>
       <p>A proprietary copy-protection scheme (unlike CSS on standard DVDs) combines
         <strong>non-standard barcodes</strong> with <strong>encryption of the sector
-        data</strong>, decrypted on the fly by the DVD controller. A GameCube disc
+        data</strong>, decrypted on the fly by the DVD controller. A GameCube disk
         cannot be read on ordinary PC optical drives.</p>
 
       <h2>2. Drive architecture</h2>
@@ -73,7 +73,7 @@
         copy-protection de/encryption internally. Two interaction modes are exposed:</p>
       <ol>
         <li><strong>Immediate commands</strong> — quick control (motor, DVD-audio stream, register access).</li>
-        <li><strong>DI DMA</strong> — bulk data transfer between disc and main memory
+        <li><strong>DI DMA</strong> — bulk data transfer between disk and main memory
           (the normal path); all transfers are 32-byte aligned.</li>
       </ol>
 

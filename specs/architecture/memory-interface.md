@@ -154,7 +154,7 @@ memory (and can also write it in texture format).
 These three are **64-bit** masters and all sit on the shared "system" data path.
 They are low-bandwidth, single-outstanding masters.
 
-- **IO** (`mem_io`) — reads and writes (peripheral DMA: disc, EXI, memory cards,
+- **IO** (`mem_io`) — reads and writes (peripheral DMA: disk, EXI, memory cards,
   network). Single outstanding transfer.
 - **DSP** (`mem_dsp`) — reads and writes (audio, ARAM DMA, code loading). Single
   outstanding transfer. Carries a 2-bit write mask.

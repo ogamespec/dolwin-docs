@@ -1,7 +1,7 @@
 # GameCube — Audio Interface (AI)
 
 > **AI** (the Audio Interface) is the block inside the **Flipper** ASIC that sits
-> between the audio DSP, the disc-drive auxiliary/streaming audio path and the
+> between the audio DSP, the disk-drive auxiliary/streaming audio path and the
 > external stereo audio DAC. It owns the programmer-visible **streaming
 > audio-control registers** at `0x0C006C00`, converts the streamed audio and the
 > DSP output into a single 16-bit stereo sample stream, and serialises that
@@ -23,7 +23,7 @@ The AI is the output stage of the console's audio path. It brings together three
 inputs:
 
 - the **DSP** left/right sample stream (`dsp_ioL` / `dsp_ioR`),
-- the **DVD / auxiliary streaming** serial input from the disc drive
+- the **DVD / auxiliary streaming** serial input from the disk drive
   (`aisd` / `aisclk` / `aislr`),
 - and a programmable **volume** for the streaming channel (`AIVR`).
 
@@ -94,16 +94,16 @@ data is 16-bit, left-justified, most-significant-bit first.
 level. The output stream is always at the 48 kHz sample rate (the DAC clock is
 derived from the fixed video clock), regardless of the input sample rate.
 
-### 2.2 Streaming input (disc drive → AI)
+### 2.2 Streaming input (disk drive → AI)
 
 | Signal | Width | Dir | Description |
 |---|---|---|---|
-| `aisd` | 1 | in | Serial audio data from the disc drive — the 16-bit L or R sample, MSB first, one bit per `aisclk` |
+| `aisd` | 1 | in | Serial audio data from the disk drive — the 16-bit L or R sample, MSB first, one bit per `aisclk` |
 | `aislr` | 1 | out | Left/right frame for the stream — toggles at the **stream** sample rate (32 or 48 kHz) |
-| `aisclk` | 1 | out | Bit clock for `aisd` (the AI drives it to the disc) |
+| `aisclk` | 1 | out | Bit clock for `aisd` (the AI drives it to the disk) |
 
 `aislr` is what **gates** the flow of stream data: while `AICR.PSTAT` is set the
-frame keeps toggling and the disc keeps sending; when it stops, the disc treats
+frame keeps toggling and the disk keeps sending; when it stops, the disk treats
 the stream as paused and sends zeros, and only begins again after it receives a
 high-low-high sequence (see §4).
 
@@ -201,8 +201,8 @@ interface).
   `AICR.AFR` (§8.1). At 32 kHz it is resampled to 48 kHz by the SRC; at 48 kHz it
   passes through.
 - **Start / pause gate (`AICR.PSTAT`).** `AICR.PSTAT` is the play status. When it
-  is set the streaming bit-clock and the `aislr` frame are enabled; the disc keeps
-  sending samples. When cleared, the frame stops toggling, the disc treats the
+  is set the streaming bit-clock and the `aislr` frame are enabled; the disk keeps
+  sending samples. When cleared, the frame stops toggling, the disk treats the
   stream as paused and sends zeros, and it only resumes after a high-low-high
   `aislr` sequence. So the streaming interface is effectively enabled/disabled by
   `PSTAT`, not by a separate clock-enable register.
@@ -322,7 +322,7 @@ Reset value `0x0000_0000`. The fields occupy the low 7 bits; bits 31:7 read as 0
 
 | Bits | Field | R/W | Reset | Description |
 |---|---|---|---|---|
-| 0 | `PSTAT` | R/W | 0 | Play status. `1` enables the streaming `aislr` clock / starts playback; `0` stops or pauses the stream (the disc then sends zeros). Also enables the counter increment. |
+| 0 | `PSTAT` | R/W | 0 | Play status. `1` enables the streaming `aislr` clock / starts playback; `0` stops or pauses the stream (the disk then sends zeros). Also enables the counter increment. |
 | 1 | `AFR` | R/W | 0 | Streaming (auxiliary) sample rate. `0` = 32 kHz, `1` = 48 kHz. The SRC converts a 32 kHz stream to 48 kHz. Should only be changed while `PSTAT` = 0. |
 | 2 | `AIINTMSK` | R/W | 0 | Streaming-interrupt mask. `0` = masked, `1` = enabled (drives `ai_piInt`). |
 | 3 | `AIINT` | R/WC | 0 | Streaming-interrupt status. Read: `0` no request, `1` request. **Write 1 to clear.** Asserts regardless of `AIINTMSK`. |
@@ -425,8 +425,8 @@ Reset value `0`. Bit 31 is the DVD-audio mode flag.
    first, one bit per `aiclk`; `ailr` toggles once per stereo frame at 48 kHz and
    selects left vs right. The output is always 48 kHz.
 9. **Streaming clock gating (`PSTAT`).** `AICR.PSTAT` enables the streaming
-   bit-clock/`aislr`. When `PSTAT` is 0 the `aislr` frame stops, the disc pauses
-   and sends zeros; the disc resumes on a high-low-high `aislr` sequence. Only
+   bit-clock/`aislr`. When `PSTAT` is 0 the `aislr` frame stops, the disk pauses
+   and sends zeros; the disk resumes on a high-low-high `aislr` sequence. Only
    start the streaming clock (and increment `AISCNT`) when `PSTAT` is 1.
 10. **`dvdaudio_mode`.** Expose `AIIT[31]` as a read/write mode flag. Its effect is
     not implemented inside the AI RTL, so model it as a stored flag unless the

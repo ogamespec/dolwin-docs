@@ -28,8 +28,8 @@
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html">Processor Interface</a>
-      <a href="disk-drive.html">Disc Drive</a>
-      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="disk-drive.html">Disk Drive</a>
+      <a href="disk-interface.html">Disk Interface (DI)</a>
       <a href="peripherals.html">Peripherals (EXI & SI)</a>
       <a href="serial-interface.html">Serial Interface (SI)</a>
       <a href="expansion-interface.html">Expansion Interface (EXI)</a>
@@ -45,7 +45,7 @@
       <h1>GameCube — Flipper Chipset</h1>
       <blockquote><strong>Flipper</strong> is the single ASIC that acts as the console's northbridge, graphics processor, audio DSP and I/O controller. It was designed by <strong>ArtX</strong> (led by Wei Yen, largely ex-SGI engineers); ArtX was acquired by <strong>ATI</strong> late in the design, but the Flipper design was already complete and not overtly influenced by ATI. Everything but the TV-out encoder sits inside this one chip.</blockquote>
       <h2>1. Role and connection</h2>
-      <p>Physically, Flipper sits between the Gekko CPU, the main 1T-SRAM, the ARAM SDRAM, the disc drive, the audio DAC, the video encoder and every peripheral connector. It is reached by the CPU only through the Gekko–Flipper bus (32-bit address / 64-bit data, 162 MHz) and it hosts all of the memory-mapped hardware registers.</p>
+      <p>Physically, Flipper sits between the Gekko CPU, the main 1T-SRAM, the ARAM SDRAM, the disk drive, the audio DAC, the video encoder and every peripheral connector. It is reached by the CPU only through the Gekko–Flipper bus (32-bit address / 64-bit data, 162 MHz) and it hosts all of the memory-mapped hardware registers.</p>
       <p>Flipper internal blocks (see <code>HW/Flipper_ASIC_Block_Diagram.png</code>):</p>
       <table>
         <tr><th>Block</th><th>Function</th></tr>
@@ -77,7 +77,7 @@
         <tr><td><code>0x0C003000</code></td><td>—</td><td>Peripheral Interface (PI)</td></tr>
         <tr><td><code>0x0C004000</code></td><td>—</td><td>Memory Interface (MI)</td></tr>
         <tr><td><code>0x0C005000</code></td><td>—</td><td>DSP + Audio + ARAM DMA</td></tr>
-        <tr><td><code>0x0C006000</code></td><td>—</td><td>Disc Interface (DI)</td></tr>
+        <tr><td><code>0x0C006000</code></td><td>—</td><td>Disk Interface (DI)</td></tr>
         <tr><td><code>0x0C006400</code></td><td>—</td><td>Serial Interface (SI)</td></tr>
         <tr><td><code>0x0C006800</code></td><td>—</td><td>External Interface (EXI)</td></tr>
         <tr><td><code>0x0C006C00</code></td><td>—</td><td>Audio Streaming (AIS)</td></tr>
