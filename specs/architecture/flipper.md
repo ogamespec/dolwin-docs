@@ -114,13 +114,20 @@ replication can clear 8 bytes with one byte store and is noticeably faster than
 
 ## 3. Graphics processor (GFX)
 
-The GFX is a **fixed-function** pipeline (no programmable shading) with three main
-stages: command processor, geometry/lighting, and rasterizer.
+The GFX is a **fixed-function** pipeline (no programmable shading) with two main
+stages: geometry/lighting and rasterizer. It is fed by the **command processor (CP)**,
+which is a separate Flipper module that supplies the graphics command / vertex stream
+whose entry point into the pipeline is the XF (see §3).
 
-- **Command processor:** an on-chip FIFO for the command stream (commands read in
-  32-byte chunks), a call FIFO for display lists (no nesting), a vertex cache and
-  vertex-format fetch. Vertex attributes can come from the stream or from arrays
-  in main memory (including fixed-point formats).
+The dedicated GFX page — the pipeline overview and index of its sub-systems — is in
+[gfx.md](gfx.md); the register-level sub-system specifications hang off that page.
+
+- **Command processor (CP, separate module):** an on-chip FIFO for the command stream
+  (commands read in 32-byte chunks), a call FIFO for display lists (no nesting), a
+  vertex cache and vertex-format fetch. Vertex attributes can come from the stream or
+  from arrays in main memory (including fixed-point formats). The CP is not a stage of
+  the graphics pipeline; it is specified separately in
+  [command-processor.md](command-processor.md).
 - **Geometry:** fixed-point math, **8** hardware RGBA light sources with
   diffuse/specular components, angle and distance attenuation, toon shading,
   bump mapping and a 64-entry matrix RAM (plus dual-texture transform).
@@ -130,7 +137,7 @@ stages: command processor, geometry/lighting, and rasterizer.
     giving a native resolution of about **640×528**. All drawing happens into the
     EFB; it is then copied (and optionally scaled/filtered) to an external
     framebuffer (**XFB**) in main memory for TV output.
-  - **Texture memory (TMEM)** of **2 MB** with a texture cache; textures up to
+  - **Texture memory (TMEM)** of **512 KB** with a texture cache; textures up to
     **1024×1024**. Formats include indexed TLUT, RGB565, RGB5A3, RGBA, IA4/8 and
     S3TC compression; alpha channel, 3D textures and indirect texturing are
     supported.

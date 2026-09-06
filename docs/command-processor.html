@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Command Processor (CP)</title>
+  <meta name="description" content="Nintendo GameCube Command Processor (CP): the Flipper module that reads the graphics command stream and display lists, fetches and caches vertex attributes, and feeds the graphics pipeline at the XF. FIFO operation, command format, host registers, VCD/VAT and the vertex cache." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="icon" href="assets/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="assets/cube.svg" />
+  <link rel="apple-touch-icon" href="assets/icon-512.png" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html"><span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="gfx.html">GFX (Graphics)</a>
+      <a href="command-processor.html" class="active">Command Processor</a>
+      <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html">Audio Interface</a>
+      <a href="memory-interface.html">Memory Interface</a>
+      <a href="processor-interface.html">Processor Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="peripherals.html">Peripherals (EXI & SI)</a>
+      <a href="serial-interface.html">Serial Interface (SI)</a>
+      <a href="expansion-interface.html">Expansion Interface (EXI)</a>
+    </nav>
+    <div class="theme-toggle"><span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Command Processor</p>
+      <h1>GameCube — Command Processor (CP)</h1>
+      <blockquote><strong>CP</strong> (the Command Processor) is the module inside the <strong>Flipper</strong> ASIC that reads the graphics command stream and the display lists from main memory, fetches and caches the vertex-attribute data, and turns it into the vertex stream that is consumed by the <strong>transform unit (XF)</strong>. It is a <em>separate</em> Flipper module: it is not a stage of the graphics pipeline, it is the <strong>source</strong> that feeds it. All graphics commands enter the pipeline at the <strong>XF</strong>, and the CP is what delivers them there.</blockquote>
+      <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation and the Flipper chip RTL and are summarised (paraphrased) rather than reproduced verbatim.</p>
+      <h2>1. Overview</h2>
+      <h3>1.1 Role and connection</h3>
+      <p>The CP sits between the Gekko CPU and the GFX pipeline. On its input side it is fed by the CPU through the <strong>Processor Interface (PI)</strong> — the CPU writes the command stream to the <strong>PI FIFO</strong> at <code>0x0C00_8000</code> (from the uncached physical map), and the CP consumes it. On its output side the CP produces the per-vertex command/attribute stream that the <strong>XF</strong> reads. The CP is a <strong>master</strong> on the main-memory interface: it reads the command stream, the display lists and the vertex-attribute arrays out of main memory through its own FIFO.</p>
+      <pre><code>Gekko ──PI FIFO (0x0C008000)──▶ Command Processor ──▶ XF ──▶ (graphics pipeline)
+                                      │
+        ┌─────────────────────────────┼──────────────────────────────┐
+        │ command FIFO (main memory)  │ call FIFO (display lists)    │ vertex cache (arrays)
+        └─────────────────────────────┴──────────────────────────────┘</code></pre>
+      <p>The CP is also the block that the <strong>PI</strong> routes the CPU's graphics-FIFO burst writes to, and it is one of the interrupt sources in the PI interrupt controller (bit 11, <code>CPINT</code>).</p>
+      <h3>1.2 Sub-blocks</h3>
+      <table>
+        <tr><th>Block</th><th>Role</th></tr>
+        <tr><td>Command FIFO</td><td>The on-chip buffer that receives and buffers the command stream read from main memory for flow control / load balancing</td></tr>
+        <tr><td>Call FIFO</td><td>The on-chip buffer that receives display-list (object) calls</td></tr>
+        <tr><td>Vertex cache</td><td>The 8 KB, 8-way set-associative cache for vertex attributes fetched from indexed arrays</td></tr>
+        <tr><td>Array / attribute engine</td><td>Computes the indexed-attribute address and unpacks each attribute per the VCD/VAT setup</td></tr>
+        <tr><td>CP→XF interface</td><td>The command/vertex output to the XF, plus the register-forwarding path (<code>xfAddr</code>/<code>xfData</code>/<code>numRegs</code>)</td></tr>
+      </table>
+      <h2>2. Command stream and FIFOs</h2>
+      <h3>2.1 The two FIFOs</h3>
+      <p>Two FIFOs carry commands to the GFX, and they are owned by different sides:</p>
+      <ul>
+        <li><strong>PI FIFO</strong> — on the <em>Gekko</em> side. The CPU performs a <strong>32-byte burst</strong> store to <code>0x0C00_8000</code>; each burst advances a write pointer by 32 bytes. It is managed by the PI-side registers <code>CPBAS</code>/<code>CPTOP</code>/<code>CPWRT</code>/<code>CPABT</code> (see <a href="processor-interface.html">processor-interface.md</a> §6.2).</li>
+        <li><strong>CP FIFO</strong> — on the <em>CP</em> side. The CP reads the stream from main memory using its own configuration (base/top, high/low water marks, read/write pointers, break point) through the CP host registers (§4).</li>
+      </ul>
+      <p>The reason for the split is that the CP can only <em>read</em> memory (it always acts as a consumer), while the PI is what handles Gekko burst operations. When the CPU writes to the PI FIFO, a notification is sent to the CP so it can adjust its write pointer registers and start consuming the stream.</p>
+      <h3>2.2 CP FIFO operation</h3>
+      <p>The CP FIFO (the read side) is configured purely by the CP host registers. All reads are in <strong>32-byte</strong> chunks.</p>
+      <ul>
+        <li><strong>Linked mode</strong> (<code>CP_ENABLE[4]</code> = 1) — writing another portion to <code>0x0C00_8000</code> causes the CP write pointer to advance by 32, and the CP processes the FIFO as the distance between its read and write pointers grows. The watermark logic is active in this mode.</li>
+        <li><strong>Multi-buffer mode</strong> (<code>CP_ENABLE[4]</code> = 0) — the program sets the read and write pointers itself, and the CP processes the FIFO as long as the FIFO count is greater than zero. The distance between the CP read and write pointers is the FIFO count.</li>
+      </ul>
+      <p>Watermarks: when the FIFO count falls below the <strong>low water mark</strong> an <strong>underflow</strong> is flagged; when it rises above the <strong>high water mark</strong> an <strong>overflow</strong> is flagged. When the under/overflow interrupt is active the CP stops reading new data. A <strong>break point</strong> (an absolute read address in the FIFO) also stops the CP and raises an interrupt when the read pointer reaches it.</p>
+      <h3>2.3 Call FIFO (display lists)</h3>
+      <p>A <strong>display list</strong> is an object called from the main stream with the <code>Call_Object</code> command: the CP pushes the current context and reads the object's bytes (a 32-byte count) through the <strong>call FIFO</strong>. Display lists are <strong>not nested</strong> — an object cannot call another object.</p>
+      <h2>3. Command format</h2>
+      <p>A command is a 32-bit word. The top bits select the operation and the low bits carry the operand / vertex-attribute-table (<code>vat</code>) selector. For the draw commands the low 3 bits index the <strong>vertex attribute table</strong> (which <code>vat</code> to use), so there are up to 8 VATs per draw.</p>
+      <table>
+        <tr><th>Opcode</th><th>Name</th><th>Meaning</th></tr>
+        <tr><td><code>00000xxx</code></td><td><code>NOP</code></td><td>No operation</td></tr>
+        <tr><td><code>00001xxx</code></td><td><code>CP_LoadRegs</code></td><td>Load a CP (command-stream) register — address + 32-bit data</td></tr>
+        <tr><td><code>00010xxx</code></td><td><code>XF_LoadRegs</code></td><td>Load XF registers (including matrices) from immediate data</td></tr>
+        <tr><td><code>00100xxx</code></td><td><code>XF_IndexLoadRegA</code></td><td>Block-load XF matrix/light registers via index array A</td></tr>
+        <tr><td><code>00101xxx</code></td><td><code>XF_IndexLoadRegB</code></td><td>… via index array B</td></tr>
+        <tr><td><code>00110xxx</code></td><td><code>XF_IndexLoadRegC</code></td><td>… via index array C</td></tr>
+        <tr><td><code>00111xxx</code></td><td><code>XF_IndexLoadRegD</code></td><td>… via index array D</td></tr>
+        <tr><td><code>01000xxx</code></td><td><code>Call_Object</code></td><td>Call a display list (address + 32-byte count); cannot nest</td></tr>
+        <tr><td><code>01001xxx</code></td><td><code>V$_Invalidate</code></td><td>Invalidate the vertex cache</td></tr>
+        <tr><td><code>0110xxxx</code></td><td><code>SU_ByPassCmd</code></td><td>A setup-unit (bypass) register load; bypasses the XF</td></tr>
+        <tr><td><code>10000vat</code></td><td><code>Draw_Quads</code></td><td>Draw quads</td></tr>
+        <tr><td><code>10001vat</code></td><td><code>Draw_QuadStrip</code></td><td>Draw a quad strip</td></tr>
+        <tr><td><code>10010vat</code></td><td><code>Draw_Triangles</code></td><td>Draw triangles</td></tr>
+        <tr><td><code>10011vat</code></td><td><code>Draw_TriStrip</code></td><td>Draw a triangle strip</td></tr>
+        <tr><td><code>10100vat</code></td><td><code>Draw_TriFan</code></td><td>Draw a triangle fan</td></tr>
+        <tr><td><code>10101vat</code></td><td><code>Draw_Lines</code></td><td>Draw lines</td></tr>
+        <tr><td><code>10110vat</code></td><td><code>Draw_LineStrip</code></td><td>Draw a line strip</td></tr>
+        <tr><td><code>10111vat</code></td><td><code>Draw_Points</code></td><td>Draw points</td></tr>
+      </table>
+      <p>The draw commands are followed by a 16-bit <strong>vertex count</strong>, then the vertex attribute stream. The register-load commands are followed by a variable number of 32-bit data words (see §5.1).</p>
+      <h2>4. Host registers</h2>
+      <p>The CP has its own register space, reached by the CPU through the 16-bit register bus at <strong><code>0x0C00_0000</code></strong> (the <code>000</code> IO-space module, see <a href="processor-interface.html">processor-interface.md</a> §6.1). The table gives the register index within that space (the register-select field); the data path is 16-bit like every other Flipper register.</p>
+      <h3>4.1 Register map (host / CPU-visible)</h3>
+      <table>
+        <tr><th>Index</th><th>Name</th><th>Description</th></tr>
+        <tr><td><code>0x00</code></td><td><code>CP_STATUS</code></td><td>FIFO status — overflow, underflow, read-idle, CP-idle, breakpoint</td></tr>
+        <tr><td><code>0x01</code></td><td><code>CP_ENABLE</code></td><td>FIFO enable, breakpoint enable, overflow/underflow/break int enables, write-ptr increment</td></tr>
+        <tr><td><code>0x02</code></td><td><code>CP_CLR</code></td><td>Clear overflow/underflow interrupt, clear performance counters</td></tr>
+        <tr><td><code>0x03</code></td><td><code>CP_MEMPERF_SEL</code></td><td>Memory performance-counter select</td></tr>
+        <tr><td><code>0x05</code></td><td><code>CP_STM_LOW</code></td><td>Streaming buffer low-water mark (in 32-byte increments)</td></tr>
+        <tr><td><code>0x10</code></td><td><code>CP_FIFO_BASEL</code></td><td>FIFO base address, low</td></tr>
+        <tr><td><code>0x11</code></td><td><code>CP_FIFO_BASEH</code></td><td>FIFO base address, high</td></tr>
+        <tr><td><code>0x12</code></td><td><code>CP_FIFO_TOPL</code></td><td>FIFO top address, low</td></tr>
+        <tr><td><code>0x13</code></td><td><code>CP_FIFO_TOPH</code></td><td>FIFO top address, high</td></tr>
+        <tr><td><code>0x14</code></td><td><code>CP_FIFO_HICNTL</code></td><td>High water mark, low</td></tr>
+        <tr><td><code>0x15</code></td><td><code>CP_FIFO_HICNTH</code></td><td>High water mark, high</td></tr>
+        <tr><td><code>0x16</code></td><td><code>CP_FIFO_LOCNTL</code></td><td>Low water mark, low</td></tr>
+        <tr><td><code>0x17</code></td><td><code>CP_FIFO_LOCNTH</code></td><td>Low water mark, high</td></tr>
+        <tr><td><code>0x18</code></td><td><code>CP_FIFO_COUNTL</code></td><td>FIFO count (entries currently in the FIFO), low</td></tr>
+        <tr><td><code>0x19</code></td><td><code>CP_FIFO_COUNTH</code></td><td>FIFO count, high</td></tr>
+        <tr><td><code>0x1A</code></td><td><code>CP_FIFO_WPTRL</code></td><td>FIFO write pointer, low</td></tr>
+        <tr><td><code>0x1B</code></td><td><code>CP_FIFO_WPTRH</code></td><td>FIFO write pointer, high</td></tr>
+        <tr><td><code>0x1C</code></td><td><code>CP_FIFO_RPTRL</code></td><td>FIFO read pointer, low</td></tr>
+        <tr><td><code>0x1D</code></td><td><code>CP_FIFO_RPTRH</code></td><td>FIFO read pointer, high</td></tr>
+        <tr><td><code>0x1E</code></td><td><code>CP_FIFO_BRKL</code></td><td>FIFO read break point, low</td></tr>
+        <tr><td><code>0x1F</code></td><td><code>CP_FIFO_BRKH</code></td><td>FIFO read break point, high</td></tr>
+        <tr><td><code>0x20</code>–<code>0x27</code></td><td><code>CP_COUNTER0..3</code></td><td>Four performance counters</td></tr>
+        <tr><td><code>0x28</code></td><td><code>CP_VC_CHKCNTL</code></td><td>Vertex-cache check counter, low</td></tr>
+        <tr><td><code>0x29</code></td><td><code>CP_VC_CHKCNTH</code></td><td>Vertex-cache check counter, high</td></tr>
+        <tr><td><code>0x2A</code></td><td><code>CP_VC_MISSL</code></td><td>Vertex-cache miss counter, low</td></tr>
+        <tr><td><code>0x2B</code></td><td><code>CP_VC_MISSH</code></td><td>Vertex-cache miss counter, high</td></tr>
+        <tr><td><code>0x2C</code></td><td><code>CP_VC_STALLL</code></td><td>Vertex-cache stall counter, low</td></tr>
+        <tr><td><code>0x2D</code></td><td><code>CP_VC_STALLH</code></td><td>Vertex-cache stall counter, high</td></tr>
+        <tr><td><code>0x2E</code></td><td><code>CP_FRCLK_CNTL</code></td><td>Frame-clock counter, low</td></tr>
+        <tr><td><code>0x2F</code></td><td><code>CP_FRCLK_CNTH</code></td><td>Frame-clock counter, high</td></tr>
+        <tr><td><code>0x30</code></td><td><code>CP_XF_ADDR</code></td><td>XF register address (for the register forward/read-back path)</td></tr>
+        <tr><td><code>0x31</code></td><td><code>CP_XF_DATAL</code></td><td>XF register data, low</td></tr>
+        <tr><td><code>0x32</code></td><td><code>CP_XF_DATAH</code></td><td>XF register data, high</td></tr>
+        <tr><td><code>0x33</code></td><td><code>CP_NUM_REGS</code></td><td>Number of registers to forward</td></tr>
+      </table>
+      <h3>4.2 <code>CP_STATUS</code> (0x00)</h3>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>OVFL</code></td><td>FIFO overflow — the count rose above the high water mark</td></tr>
+        <tr><td>1</td><td><code>UNFL</code></td><td>FIFO underflow — the count fell below the low water mark</td></tr>
+        <tr><td>2</td><td><code>RDIDLE</code></td><td>The FIFO read unit is idle</td></tr>
+        <tr><td>3</td><td><code>CPIDLE</code></td><td>The command processor is idle</td></tr>
+        <tr><td>4</td><td><code>BRK</code></td><td>The FIFO read pointer reached the break point (cleared by disabling the break point)</td></tr>
+      </table>
+      <h3>4.3 <code>CP_ENABLE</code> (0x01)</h3>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>Description</th><th>Reset</th></tr>
+        <tr><td>0</td><td><code>FIFORD</code></td><td>Enable FIFO reads</td><td><code>0</code> (disabled)</td></tr>
+        <tr><td>1</td><td><code>FIFOBRK</code></td><td>FIFO break-point enable</td><td><code>0</code></td></tr>
+        <tr><td>2</td><td><code>OVFLINT</code></td><td>FIFO overflow interrupt enable</td><td><code>0</code></td></tr>
+        <tr><td>3</td><td><code>UNFLINT</code></td><td>FIFO underflow interrupt enable</td><td><code>0</code></td></tr>
+        <tr><td>4</td><td><code>WRPTRINC</code></td><td>FIFO write-pointer increment enable</td><td><code>1</code> (enabled)</td></tr>
+        <tr><td>5</td><td><code>FIFOBRKINT</code></td><td>FIFO break-point interrupt enable</td><td><code>0</code></td></tr>
+      </table>
+      <h3>4.4 <code>CP_CLR</code> (0x02)</h3>
+      <table>
+        <tr><th>Bit</th><th>Field</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>OVFLINT</code></td><td>Clear the FIFO overflow interrupt</td></tr>
+        <tr><td>1</td><td><code>UNFLINT</code></td><td>Clear the FIFO underflow interrupt</td></tr>
+        <tr><td>2</td><td><code>PERFCNT</code></td><td>Clear the performance counters</td></tr>
+      </table>
+      <h3>4.5 FIFO address / watermark registers</h3>
+      <p>Each FIFO address, watermark, count or pointer value is split into a <strong>low</strong> and a <strong>high</strong> register. The low register holds bits <code>[15:5]</code> (the upper 11 bits of the low half) and the high register holds bits <code>[25:16]</code> (10 bits), yielding a <strong>21-bit</strong> value in 32-byte units (address bits <code>[25:5]</code>); the low 5 address bits are zero. The <strong>count</strong>, <strong>watermark</strong> and <strong>pointer</strong> values live in the same 32-byte units.</p>
+      <ul>
+        <li><code>CP_FIFO_BASE</code> — where the CP starts reading the stream (main memory).</li>
+        <li><code>CP_FIFO_TOP</code> — the end of the stream region.</li>
+        <li><code>CP_FIFO_HICNT</code> / <code>CP_FIFO_LOCNT</code> — the high/low water marks (FIFO occupancy in</li>
+      </ul>
+      <p>32-byte units) used to flag overflow / underflow.</p>
+      <ul>
+        <li><code>CP_FIFO_COUNT</code> — the current FIFO occupancy (the distance between the write and</li>
+      </ul>
+      <p>read pointers).</p>
+      <ul>
+        <li><code>CP_FIFO_WPTR</code> / <code>CP_FIFO_RPTR</code> — the CP's write and read pointers.</li>
+        <li><code>CP_FIFO_BRK</code> — the read <strong>break point</strong> address.</li>
+      </ul>
+      <h3>4.6 Counters</h3>
+      <p><code>CP_COUNTER0..3</code> and the vertex-cache / frame-clock counters are performance counters that count events selected in <code>CP_MEMPERF_SEL</code> (e.g. the number of command-FIFO requests, object-call requests, vertex-cache misses, or total memory requests). The frame-clock counter (<code>CP_FRCLK_CNT</code>) counts GFX clock cycles. These are debug/bring-up aids.</p>
+      <h2>5. Vertex data fetch</h2>
+      <p>The command stream carries the <em>control</em>; the per-vertex attribute data can either be inline (direct) or indexed from an <strong>array</strong> in main memory. How a vertex is composed is described by two pieces of per-vertex state written through the command stream (the "command-stream registers"): the <strong>Vertex Command Descriptor (VCD)</strong> and the <strong>Vertex Attribute Table (VAT)</strong>.</p>
+      <h3>5.1 Command-stream registers</h3>
+      <p>These CP registers are written from the stream with <code>CP_LoadRegs</code> (address + 32-bit data), not directly by the CPU:</p>
+      <table>
+        <tr><th>Address</th><th>Register</th><th>Description</th></tr>
+        <tr><td><code>0x00</code></td><td><code>CP_VC_STAT_RESET</code></td><td>Reset the vertex-cache statistics</td></tr>
+        <tr><td><code>0x01</code></td><td><code>CP_STAT_ENABLE</code></td><td>Enable vertex-cache statistics / frame-clock</td></tr>
+        <tr><td><code>0x02</code></td><td><code>CP_STAT_SEL</code></td><td>Select which attribute / stall to count</td></tr>
+        <tr><td><code>0x03</code></td><td><code>CP_MATINDEX_A</code></td><td>Matrix index for position/normal and tex0–tex3</td></tr>
+        <tr><td><code>0x04</code></td><td><code>CP_MATINDEX_B</code></td><td>Matrix index for tex4–tex7</td></tr>
+        <tr><td><code>0x05</code></td><td><code>CP_VCD_LO</code></td><td>Vertex Command Descriptor, low half</td></tr>
+        <tr><td><code>0x06</code></td><td><code>CP_VCD_HI</code></td><td>Vertex Command Descriptor, high half</td></tr>
+        <tr><td><code>0x07</code></td><td><code>CP_VAT_A</code></td><td>Vertex Attribute Table, group A</td></tr>
+        <tr><td><code>0x08</code></td><td><code>CP_VAT_B</code></td><td>Vertex Attribute Table, group B</td></tr>
+        <tr><td><code>0x09</code></td><td><code>CP_VAT_C</code></td><td>Vertex Attribute Table, group C</td></tr>
+        <tr><td><code>0x0A</code></td><td><code>CP_ARRAY_BASE</code></td><td>Base address of an attribute array</td></tr>
+        <tr><td><code>0x0B</code></td><td><code>CP_ARRAY_STRIDE</code></td><td>Stride of an attribute array</td></tr>
+      </table>
+      <h3>5.2 Vertex Command Descriptor (VCD)</h3>
+      <p>The VCD says which attributes a vertex carries and how each is sourced. <code>CP_VCD_LO</code> covers the matrix indexes, position, normal and the two colours; <code>CP_VCD_HI</code> covers the eight texture coordinates. Each 2-bit field uses the same source encoding:</p>
+      <table>
+        <tr><th>Value</th><th>Source</th></tr>
+        <tr><td><code>0</code></td><td><strong>not present</strong></td></tr>
+        <tr><td><code>1</code></td><td><strong>direct</strong> — carried inline in the stream</td></tr>
+        <tr><td><code>2</code></td><td><strong>8-bit indexed</strong></td></tr>
+        <tr><td><code>3</code></td><td><strong>16-bit indexed</strong></td></tr>
+      </table>
+      <p><code>CP_VCD_LO</code> bit layout:</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>PosMatIdx</code></td><td>Position/normal matrix index present (0/1, always direct)</td></tr>
+        <tr><td>1</td><td><code>Tex0MatIdx</code></td><td>Tex0 matrix index present</td></tr>
+        <tr><td>2..8</td><td><code>Tex1MatIdx</code>..<code>Tex7MatIdx</code></td><td>Tex1..Tex7 matrix index present</td></tr>
+        <tr><td>10:9</td><td><code>Position</code></td><td>Position source (2-bit)</td></tr>
+        <tr><td>12:11</td><td><code>Normal</code></td><td>Normal source</td></tr>
+        <tr><td>14:13</td><td><code>Color0</code></td><td>Colour0 source</td></tr>
+        <tr><td>16:15</td><td><code>Color1</code></td><td>Colour1 source</td></tr>
+      </table>
+      <p><code>CP_VCD_HI</code> bit layout:</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>1:0</td><td><code>Tex0Coord</code></td><td>Tex0 source</td></tr>
+        <tr><td>3:2</td><td><code>Tex1Coord</code></td><td>Tex1 source</td></tr>
+        <tr><td>5:4</td><td><code>Tex2Coord</code></td><td>Tex2 source</td></tr>
+        <tr><td>7:6</td><td><code>Tex3Coord</code></td><td>Tex3 source</td></tr>
+        <tr><td>9:8</td><td><code>Tex4Coord</code></td><td>Tex4 source</td></tr>
+        <tr><td>11:10</td><td><code>Tex5Coord</code></td><td>Tex5 source</td></tr>
+        <tr><td>13:12</td><td><code>Tex6Coord</code></td><td>Tex6 source</td></tr>
+        <tr><td>15:14</td><td><code>Tex7Coord</code></td><td>Tex7 source</td></tr>
+      </table>
+      <p>A missing attribute means the hardware uses the register default (e.g. the current matrix index or a constant colour). The matrix-index attributes (position/normal and each texture matrix) are always direct when present. The position and normal matrix indexes are separate RAMs in the XF but share a one-to-one correspondence: if index <code>A</code> is used for the position, index <code>A</code> is used for the normal as well.</p>
+      <h3>5.3 Vertex Attribute Table (VAT)</h3>
+      <p>For each present attribute the VAT gives the <strong>component count</strong>, the <strong>component width/format</strong> and a <strong>fixed-point shift</strong>. One VAT covers one <em>attribute format</em> and is selected per draw by the low 3 bits of the draw opcode (the <code>vat</code> selector), so up to 8 VATs can be active. It is split across three registers — <code>CP_VAT_A</code>, <code>CP_VAT_B</code> and <code>CP_VAT_C</code>.</p>
+      <p><strong>Component format</strong> (<code>CompSize</code>) for scalar/vector attributes (position, normal, texture coordinate):</p>
+      <table>
+        <tr><th>Value</th><th>Format</th></tr>
+        <tr><td><code>0</code></td><td>ubyte</td></tr>
+        <tr><td><code>1</code></td><td>byte</td></tr>
+        <tr><td><code>2</code></td><td>ushort</td></tr>
+        <tr><td><code>3</code></td><td>short</td></tr>
+        <tr><td><code>4</code></td><td>float</td></tr>
+        <tr><td><code>5</code>–<code>7</code></td><td>reserved</td></tr>
+      </table>
+      <p><strong>Colour format</strong> (<code>CompSize</code>) for the two colour channels:</p>
+      <table>
+        <tr><th>Value</th><th>Format</th><th>Components</th></tr>
+        <tr><td><code>0</code></td><td>RGB565</td><td>3 (r,g,b)</td></tr>
+        <tr><td><code>1</code></td><td>RGB888</td><td>3</td></tr>
+        <tr><td><code>2</code></td><td>RGB888x</td><td>3</td></tr>
+        <tr><td><code>3</code></td><td>RGBA4444</td><td>4</td></tr>
+        <tr><td><code>4</code></td><td>RGBA6666</td><td>4</td></tr>
+        <tr><td><code>5</code></td><td>RGBA8888</td><td>4</td></tr>
+      </table>
+      <p><strong>Component count</strong> (<code>CompCount</code>, 1 bit) selects 2 vs 3 components for position, 1 vs 2 for a texture coordinate, 3 vs 9 for a normal, and 3 vs 4 for a colour.</p>
+      <p><code>CP_VAT_A</code> (attribute group A — position, normal, colors, tex0):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>PosCnt</code></td><td>Position components: 0 = (x,y), 1 = (x,y,z)</td></tr>
+        <tr><td>3:1</td><td><code>PosFmt</code></td><td>Position component format</td></tr>
+        <tr><td>8:4</td><td><code>PosShft</code></td><td>Position fixed-point shift</td></tr>
+        <tr><td>9</td><td><code>NrmCnt</code></td><td>Normal count: 0 = 3, 1 = 9</td></tr>
+        <tr><td>12:10</td><td><code>NrmFmt</code></td><td>Normal component format</td></tr>
+        <tr><td>13</td><td><code>Col0Cnt</code></td><td>Colour0 components: 0 = RGB, 1 = RGBA</td></tr>
+        <tr><td>16:14</td><td><code>Col0Fmt</code></td><td>Colour0 format</td></tr>
+        <tr><td>17</td><td><code>Col1Cnt</code></td><td>Colour1 components</td></tr>
+        <tr><td>20:18</td><td><code>Col1Fmt</code></td><td>Colour1 format</td></tr>
+        <tr><td>21</td><td><code>Tex0Cnt</code></td><td>Tex0 components: 0 = (s), 1 = (s,t)</td></tr>
+        <tr><td>24:22</td><td><code>Tex0Fmt</code></td><td>Tex0 component format</td></tr>
+        <tr><td>29:25</td><td><code>Tex0Shft</code></td><td>Tex0 fixed-point shift</td></tr>
+        <tr><td>30</td><td><code>ByteDequant</code></td><td>Rev B: the shift applies to u/byte and u/short components</td></tr>
+        <tr><td>31</td><td><code>NormalIndex3</code></td><td>Rev B: nine normals use three staggered indexes</td></tr>
+      </table>
+      <p><code>CP_VAT_B</code> (attribute group B — tex1..tex4):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>0</td><td><code>Tex1Cnt</code></td><td>Tex1 components</td></tr>
+        <tr><td>3:1</td><td><code>Tex1Fmt</code></td><td>Tex1 format</td></tr>
+        <tr><td>8:4</td><td><code>Tex1Shft</code></td><td>Tex1 shift</td></tr>
+        <tr><td>9</td><td><code>Tex2Cnt</code></td><td>Tex2 components</td></tr>
+        <tr><td>12:10</td><td><code>Tex2Fmt</code></td><td>Tex2 format</td></tr>
+        <tr><td>17:13</td><td><code>Tex2Shft</code></td><td>Tex2 shift</td></tr>
+        <tr><td>18</td><td><code>Tex3Cnt</code></td><td>Tex3 components</td></tr>
+        <tr><td>21:19</td><td><code>Tex3Fmt</code></td><td>Tex3 format</td></tr>
+        <tr><td>26:22</td><td><code>Tex3Shft</code></td><td>Tex3 shift</td></tr>
+        <tr><td>27</td><td><code>Tex4Cnt</code></td><td>Tex4 components</td></tr>
+        <tr><td>30:28</td><td><code>Tex4Fmt</code></td><td>Tex4 format</td></tr>
+        <tr><td>31</td><td><code>VCacheEnhance</code></td><td>Must be <code>1</code></td></tr>
+      </table>
+      <p><code>CP_VAT_C</code> (attribute group C — tex4 shift, tex5..tex7):</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>4:0</td><td><code>Tex4Shft</code></td><td>Tex4 shift</td></tr>
+        <tr><td>5</td><td><code>Tex5Cnt</code></td><td>Tex5 components</td></tr>
+        <tr><td>8:6</td><td><code>Tex5Fmt</code></td><td>Tex5 format</td></tr>
+        <tr><td>13:9</td><td><code>Tex5Shft</code></td><td>Tex5 shift</td></tr>
+        <tr><td>14</td><td><code>Tex6Cnt</code></td><td>Tex6 components</td></tr>
+        <tr><td>17:15</td><td><code>Tex6Fmt</code></td><td>Tex6 format</td></tr>
+        <tr><td>22:18</td><td><code>Tex6Shft</code></td><td>Tex6 shift</td></tr>
+        <tr><td>23</td><td><code>Tex7Cnt</code></td><td>Tex7 components</td></tr>
+        <tr><td>26:24</td><td><code>Tex7Fmt</code></td><td>Tex7 format</td></tr>
+        <tr><td>31:27</td><td><code>Tex7Shft</code></td><td>Tex7 shift</td></tr>
+      </table>
+      <p>The <strong>shift</strong> is the position of the binary point counted from the LSB and applies to all u/short components (and, when <code>ByteDequant</code> is set, to u/byte components). It is how fixed-point vertex data is scaled to the hardware's internal fractional format. <code>VCacheEnhance</code> and <code>ByteDequant</code>/<code>NormalIndex3</code> are Rev-B fields that must be set to <code>1</code> when using the corresponding features.</p>
+      <h3>5.4 Arrays, base and stride</h3>
+      <p>Indexed attributes are fetched from an <strong>array</strong> in main memory. The array base and stride are set with <code>CP_ARRAY_BASE</code>/<code>CP_ARRAY_STRIDE</code>, which select the array via a 4-bit index:</p>
+      <table>
+        <tr><th>Index</th><th>Array</th></tr>
+        <tr><td><code>0x0</code>–<code>0xB</code></td><td>attribute array for position / normal / color0 / color1 / tex0…tex7</td></tr>
+        <tr><td><code>0xC</code></td><td>XF index array A</td></tr>
+        <tr><td><code>0xD</code></td><td>XF index array B</td></tr>
+        <tr><td><code>0xE</code></td><td>XF index array C</td></tr>
+        <tr><td><code>0xF</code></td><td>XF index array D</td></tr>
+      </table>
+      <p>The address of an indexed attribute is:</p>
+      <pre><code>MemoryAddress = ArrayBase[I] + index * ArrayStride[I]</code></pre>
+      <p>where <code>ArrayBase</code> is 26-bit and <code>ArrayStride</code> is 8-bit (in bytes). An index value of <code>0xFF</code> (8-bit) or <code>0xFFFF</code> (16-bit) skips that vertex.</p>
+      <h3>5.5 Vertex cache</h3>
+      <p>Attributes fetched from an indexed array are cached so a vertex that is shared by several primitives is read from main memory only once. The cache is the subject of a dedicated patent (<strong>US 6,717,577</strong>, "Vertex Cache for 3D Computer Graphics"), which is the authority for its design.</p>
+      <h4>5.5.1 Organization</h4>
+      <p>The cache is a small, low-latency on-chip memory local to the CP, built as a <strong>512 × 128-bit dual-ported RAM</strong> organised as an <strong>8-way set-associative</strong> cache (8 KB total, 64 sets of 8 ways). It is <em>not</em> a general-purpose cache: the tags are customised to deliver vertex data to the graphics engine, and each cache line holds the packed attribute data for an indexed vertex (or part of it).</p>
+      <h4>5.5.2 Why it exists</h4>
+      <p>The cache exists to exploit the <strong>temporal locality</strong> of vertex data. A primitive list references vertices by index, and a given vertex is usually referenced again within a few adjacent primitives. Because the vertex data itself is stored in main memory as separate component <em>arrays</em> (position, normal, colour, texture coordinate), the cache lets the CP build each vertex on the fly and keep recently used ones resident, instead of re-fetching them from memory for every reference. This removes the need either to pre-sort the vertex data in display order or to re-specify each polygon each time it is used.</p>
+      <h4>5.5.3 Access, fill and invalidation</h4>
+      <ul>
+        <li>The vertex stream parser addresses the cache <strong>as if it were the whole of main memory</strong>, keyed by the vertex index and the attribute-array base. On a hit the packed attribute data is returned immediately; on a <strong>miss</strong> the CP fetches the relevant block(s) from the array in main memory (typically via DMA) and fills the line, often <strong>prefetching</strong> the next vertex to hide the memory latency.</li>
+        <li>Because the cached data is still in its packed, quantised form, it is passed through an <strong>inverse-quantizer</strong> before use, which converts any of the supported vertex formats (8-bit / 16-bit fixed-point, or float) into the uniform float representation that the graphics pipeline consumes.</li>
+        <li>The cache is invalidated on demand with the <code>V$_Invalidate</code> command, which flushes the tags so the next indexed access re-fetches from memory.</li>
+        <li>The check / miss / stall counters (§4.6) report cache behaviour: how many accesses were checked, how many missed, and how many stalled waiting for a fill.</li>
+      </ul>
+      <h4>5.5.4 The indexed data it serves</h4>
+      <p>The cache serves the <em>indexed</em> representation, which is built from three levels:</p>
+      <ul>
+        <li>a <strong>primitive list</strong> — the sequence of primitives (triangles, quads, strips, …), each described by a list of vertex indices;</li>
+        <li>a <strong>vertex list</strong> — the indexed vertices those primitives reference, where a single vertex may be used by several primitives;</li>
+        <li>the <strong>component arrays</strong> in main memory (position, normal, two colours, up to eight texture coordinates), each addressed by an index and the per-attribute base/stride of §5.4.</li>
+      </ul>
+      <p>A <strong>vertex descriptor</strong> (the VCD/VAT of §5.2/§5.3) defines, for the whole draw, which attributes are present, their component count and size, and whether each is direct or indexed. Every vertex in a draw uses the same vertex-attribute format, so the CP can unpack, inverse-quantise and assemble the stream uniformly.</p>
+      <h2>6. Emulator notes</h2>
+      <ol>
+        <li><strong>Two register spaces.</strong> Model the <em>host</em> registers (reached at <code>0x0C00_0000</code>, 16-bit data) and the <em>command-stream</em> registers (written via <code>CP_LoadRegs</code> with an 8-bit address and a 32-bit value) separately.</li>
+        <li><strong>FIFO setup.</strong> Model the CP read FIFO with <code>base</code>/<code>top</code> (in 32-byte units), a high/low water mark, and read/write pointers. The FIFO count is <code>wptr - rptr</code> (clamped to <code>[base, top]</code>).</li>
+        <li><strong>Linked vs multi-buffer.</strong> In linked mode the Gekko PI-FIFO write and the CP read pointer advance together and the CP runs whenever the count is non-zero; in multi-buffer mode the program sets both pointers. Underflow/overflow flag the water-mark crossing and stop the CP reading.</li>
+        <li><strong>Break point.</strong> When the CP read pointer reaches the break address, stop reading and raise the break interrupt (if enabled).</li>
+        <li><strong>Command decode.</strong> Implement the opcode table in §3. For a draw, read the 16-bit vertex count, then for each vertex unpack the attributes per the current VAT/VCD.</li>
+        <li><strong>Indexed attributes.</strong> Compute the array address with <code>base + index * stride</code>, and treat index <code>0xFF</code>/<code>0xFFFF</code> as a skip. Model the 8 KB vertex cache as an 8-way set-associative table keyed on (array base, index); on a miss fetch+fill the line (optionally prefetching), and invalidate it on <code>V$_Invalidate</code>. Feed the fetched packed data through an inverse-quantiser to the XF.</li>
+        <li><strong>Display lists.</strong> <code>Call_Object</code> (address, 32-byte count) switches the CP to read from the object region; do not allow nesting.</li>
+        <li><strong>XF hand-off.</strong> The assembled vertex stream (position, normal, colour, texture coordinates, per-attribute matrix indexes) is handed to the XF, which is the entry point of the graphics pipeline.</li>
+        <li><strong>Interrupt.</strong> The CP raises a single interrupt sense (<code>CPINT</code>) in the PI; it is masked/cleared in the CP via <code>CP_ENABLE</code>/<code>CP_CLR</code> (<code>OVFLINT</code>/<code>UNFLINT</code>/<code>BRKINT</code>).</li>
+      </ol>
+      <h2>7. Related specifications</h2>
+      <ul>
+        <li><a href="gfx.html">gfx.md</a> — the GFX (graphics) subsystem; the pipeline the CP feeds and the page that lists the CP as a separate command source.</li>
+        <li><a href="flipper.html">flipper.md</a> — the Flipper chipset as a whole.</li>
+        <li><a href="processor-interface.html">processor-interface.md</a> — the Gekko→Flipper bus, the PI FIFO and the CP register-space base.</li>
+        <li><a href="memory-interface.html">memory-interface.md</a> — the arbitrated main-memory path the CP uses to read the stream, display lists and arrays.</li>
+      </ul>
+      <h2>8. References</h2>
+      <ul>
+        <li><code>HW/GraphicsSystem/GFX.md</code> — the CP FIFO registers, command format, vertex cache and VCD/VAT detail.</li>
+        <li><code>HW/GraphicsSystem/GFX_FIFO.png</code>, <code>GFX_Interconnect.png</code> — the FIFO and interconnect diagrams.</li>
+        <li><code>RE/GX/gxfifo.txt</code>, <code>RE/GX/scissor.txt</code> — GX FIFO and scissor notes.</li>
+        <li><code>RE/GX/GXPrivate.h</code>, <code>RE/GX/GXInit.c</code> — how the system library drives the CP.</li>
+        <li><code>HW/acronyms.txt</code> — CP, XF, VAT, VCD, TMEM, GFX glossary.</li>
+        <li><strong>US Patent 6,717,577</strong> (vertex cache) — the 512 × 128-bit dual-ported RAM, the 8-way set-associative organisation, the customised tags, the on-demand/prefetch fill and the inverse-quantiser (§5.5).</li>
+        <li><strong>US Patent 7,199,710</strong> (GX FIFO) — the command-FIFO mechanism.</li>
+        <li>The Flipper chip RTL is the authority for the CP register field meanings and FIFO behaviour; all facts above are summarised from it.</li>
+      </ul>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>

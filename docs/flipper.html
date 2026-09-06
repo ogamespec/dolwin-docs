@@ -22,6 +22,8 @@
       <a href="clock-generator.html">Clock</a>
       <a href="gekko.html">Gekko</a>
       <a href="flipper.html" class="active">Flipper</a>
+      <a href="gfx.html">GFX (Graphics)</a>
+      <a href="command-processor.html">Command Processor</a>
       <a href="video-interface.html">Video Interface</a>
       <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
@@ -112,11 +114,12 @@
       <h3>2.2 Undocumented store quirk</h3>
       <p>The main-memory bus only carries 64-bit transactions. An <strong>uncached byte</strong> or halfword store therefore ends up writing a full 8-byte aligned block (the byte is replicated). This is harmless for cached accesses (which use cache lines) but means <code>memset()</code> on uncached memory fills incorrectly. Software exploiting the replication can clear 8 bytes with one byte store and is noticeably faster than <code>memset</code>.</p>
       <h2>3. Graphics processor (GFX)</h2>
-      <p>The GFX is a <strong>fixed-function</strong> pipeline (no programmable shading) with three main stages: command processor, geometry/lighting, and rasterizer.</p>
+      <p>The GFX is a <strong>fixed-function</strong> pipeline (no programmable shading) with two main stages: geometry/lighting and rasterizer. It is fed by the <strong>command processor (CP)</strong>, which is a separate Flipper module that supplies the graphics command / vertex stream whose entry point into the pipeline is the XF (see §3).</p>
+      <p>The dedicated GFX page — the pipeline overview and index of its sub-systems — is in <a href="gfx.html">gfx.md</a>; the register-level sub-system specifications hang off that page.</p>
       <ul>
-        <li><strong>Command processor:</strong> an on-chip FIFO for the command stream (commands read in</li>
+        <li><strong>Command processor (CP, separate module):</strong> an on-chip FIFO for the command stream</li>
       </ul>
-      <p>32-byte chunks), a call FIFO for display lists (no nesting), a vertex cache and vertex-format fetch. Vertex attributes can come from the stream or from arrays in main memory (including fixed-point formats).</p>
+      <p>(commands read in 32-byte chunks), a call FIFO for display lists (no nesting), a vertex cache and vertex-format fetch. Vertex attributes can come from the stream or from arrays in main memory (including fixed-point formats). The CP is not a stage of the graphics pipeline; it is specified separately in <a href="command-processor.html">command-processor.md</a>.</p>
       <ul>
         <li><strong>Geometry:</strong> fixed-point math, <strong>8</strong> hardware RGBA light sources with</li>
       </ul>
@@ -128,7 +131,7 @@
       </ul>
       <p>giving a native resolution of about <strong>640×528</strong>. All drawing happens into the EFB; it is then copied (and optionally scaled/filtered) to an external framebuffer (<strong>XFB</strong>) in main memory for TV output.</p>
       <ul>
-        <li><strong>Texture memory (TMEM)</strong> of <strong>2 MB</strong> with a texture cache; textures up to</li>
+        <li><strong>Texture memory (TMEM)</strong> of <strong>512 KB</strong> with a texture cache; textures up to</li>
       </ul>
       <p><strong>1024×1024</strong>. Formats include indexed TLUT, RGB565, RGB5A3, RGBA, IA4/8 and S3TC compression; alpha channel, 3D textures and indirect texturing are supported.</p>
       <ul>
