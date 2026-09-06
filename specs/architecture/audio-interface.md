@@ -39,6 +39,27 @@ Processor Interface: it is IO module `io_addr_ai` (selected by `PiAddr[11:10] ==
 `0xCC006C00`). The register decode inside the AI uses `PiAddr[4:2]`; each
 register is 32-bit internally, at byte offsets `index*4`.
 
+It is one of the four peripheral sub-blocks of the Flipper **I/O (`io`) module**
+(the others being DI, SI and EXI). The `io` block also contains the 16-bit register
+interface (`io_Pi`, which decodes the `0x0C006000`–`0x0C006C00` module bases) and a
+shared main-memory port (`io_Mem`) with a round-robin IO-DMA arbiter; each
+peripheral sub-block has its own interrupt (`ai_piInt` here) that PI aggregates. The
+AI's register block is in `io`, but its **audio DMA** is not: that lives in the
+DSP/audio register space and is described separately to keep the two sides of the
+audio path distinct.
+
+```
+io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)
+├── io_Si    — SI  (serial / controller interface)
+├── io_Exi   — EXI (expansion, 3 channels)
+├── io_Ai_top— AI  (audio interface)                        « this block »
+└── io_TstMux— test/scan mux and pad output-enable control
+```
+
+
 ### 1.1 Sub-blocks
 
 | Block | Role |

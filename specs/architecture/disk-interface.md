@@ -28,7 +28,36 @@ as `DIINT`) and drives the pins to the drive. Software never touches the bus
 directly; it only writes register values and lets the DI sequence the
 handshake.
 
-### 1.1 Sub-blocks
+### 1.1 Position in the IO-top subsystem
+
+The four self-contained peripheral interfaces — DI, SI, EXI and AI — are all
+instantiations of a single **I/O (`io`) module** inside Flipper. That `io` block
+contains, apart from its peripheral sub-blocks:
+
+- an **IO register / CPU interface** (`io_Pi`) — decodes the four module bases
+  (`0x0C006000` DI, `0x0C006400` SI, `0x0C006800` EXI, `0x0C006C00` AI), carries
+  the 16-bit big-endian register data and multiplexes each sub-block's read data
+  back to the Processor Interface;
+- a **shared main-memory port** (`io_Mem`) — one 64-bit, 32-byte-line port to the
+  Flipper memory controller, shared by a **round-robin IO-DMA arbiter** between
+  the DI and the three EXI channels;
+- the four **peripheral sub-blocks** — DI, SI, EXI (3 channels) and AI — each with
+  its own interrupt line (`di_piInt`, `si_piInt`, `exi_piInt`, `ai_piInt`) that PI
+  aggregates into `DIINT`/`SIINT`/`EXINT`/`AIINT`.
+
+```
+io  (I/O module)
+├── io_Pi    — register/CPU interface (16-bit PI path, module decode)
+├── io_Mem   — shared main-memory port + round-robin IO-DMA arbiter
+├── io_di    — DI  (disk-drive command transport)          « this block »
+├── io_Si    — SI  (serial / controller interface)
+├── io_Exi   — EXI (expansion, 3 channels)
+├── io_Ai_top— AI  (audio interface)
+└── io_TstMux— test/scan mux and pad output-enable control
+```
+
+
+### 1.2 Sub-blocks
 
 The `io` block instantiates the DI as `io_di`, which is built from five
 sub-modules that together implement the whole interface:
@@ -50,7 +79,7 @@ drive (DIDD) ──io_didctl──▶ io_dififo ── (32-byte full line) ─�
 For a **write to disc** the same FIFO is filled from memory by `io_dimctl` and
 drained to the drive by `io_didctl`.
 
-### 1.2 Connection to the drive
+### 1.3 Connection to the drive
 
 The DI connects to the drive through the **DDU connector (P9)** on the
 motherboard. The drive is powered (5 V), ground and the DI mains signals plus the
@@ -187,18 +216,46 @@ The drive asserts `DIERR` on a falling edge to signal an error. The DI:
 drive deasserts `DIERR` only after receiving the next command (typically a
 request-sense that the software sends in response to the error interrupt).
 
-### 3.7 Typical drive command encodings
+### 3.7 The drive command set
 
-The system library's low-level routines show the command-packet layout. For a
-DMA **read** the packet is `0xA8 00 00 subcmd` in `DICMDBUF0`, the sector offset
-`>> 2` in `DICMDBUF1`, and the byte length in `DICMDBUF2`; the control write is
-`DICR = DMA | TSTART`. Control-only commands write just the opcode plus (for
-some) parameters and start with only `TSTART` (command-only transfer). Examples
-seen in the low-level code include a read (subcmd 0), a disc-ID read (subcmd
-0x40), a seek, a stop-motor, a request-error, an inquiry, a DVD-audio-stream
-control and a DVD-audio-buffer config. The exact opcode bytes and parameter
-fields live in the reverse-engineering notes; only the register-level mechanism
-is specified here.
+The drive is a command-driven device: the host writes a **12-byte** packet into
+`DICMDBUF0..2` (big-endian, so byte 0 of the packet is bits `[31:24]` of
+`DICMDBUF0`) and sets `DICR[TSTART]`. An opcode is the first command byte
+(CMDBYTE0). There are three kinds of command, distinguished by how they move data:
+
+- **DMA** — bulk data moves between main memory and the drive. `DIMAR`/`DILENGTH`
+  are set and `DICR = DMA | TSTART`.
+- **Immediate (command-only)** — only the command packet is sent; no data moves
+  through memory. `DICR = TSTART` only. The io-top specification notes that the
+  only packet command which uses the immediate **data buffer** (`DIIMMBUF`) is a
+  drive **register-access** command; the other control commands transfer no data
+  at all.
+- The command set observed in the system library is:
+
+| Opcode | Command | Data | Packet / notes |
+|---|---|---|---|
+| `0x12` | Inquiry | DMA | Read the drive manufacturer info (`DVDDriveInfo` — revision, device code, release date). `CMDBUF2` = length, `MAR`/`LEN` = destination, `CR = DMA \| TSTART` |
+| `0xA8` | Read | DMA | Read disc data. `subcmd` (`CMDBUF3`), `CMDBUF1 = offset >> 2`, `CMDBUF2` = byte length, `MAR`/`LEN` = destination, `CR = DMA \| TSTART` |
+| `0xA8` sub `0x40` | Read disc ID | DMA | Read the 32-byte disc header (`DVDDiskID`) from the start of the disc; otherwise the same as `0xA8` |
+| `0xAB` | Seek | none | Move the pickup to the sector containing `offset`. `CMDBUF1 = offset >> 2`, `CR = TSTART` |
+| `0xE0` | Request error | none | Retrieve the last drive error / sense status. `CR = TSTART` |
+| `0xE1` | DVD audio stream | none | Start/config a DVD-Audio stream. `subcmd` selects the stream, `CMDBUF1 = offset >> 2`, `CMDBUF2` = length, `CR = TSTART` |
+| `0xE2` | Request audio status | none | Request DVD-Audio stream status. `subcmd` selects what is reported, `CR = TSTART` |
+| `0xE3` | Stop motor | none | Stop the spindle. `CR = TSTART` |
+| `0xE4` | Audio buffer config | none | Configure the streaming-audio buffer: `0xE4000000 \| (enable ? 0x1000 : 0) \| size`; low nibble of `size` = buffer size (≤ 16), high nibble = trigger (0–2), the `0x1000` bit sets the enable flag. `CR = TSTART` |
+
+The `0xA8` **read** sub-command is `CMDBUF3` (bits `[7:0]` of `DICMDBUF0`); the
+usual value is `0x00` for a normal data read and `0x40` for the disc-ID read.
+`DMA` commands are initiated with `CR = DMA | TSTART`; control commands with
+`CR = TSTART` only.
+
+Address/alignment constraints enforced by the driver (and expected by the drive)
+are worth modelling: the `offset` is byte-granular but must be a multiple of 4 and
+is transmitted as `offset >> 2` in `CMDBUF1`; the data `length` must be a
+multiple of 32 (one DMA block) and is given as a byte count; the destination
+address in `DIMAR` must be 32-byte aligned. An `0xA8` offset beyond the media, or
+an unsupported sub-command, is reported back through the drive-error interrupt
+rather than through the register interface.
 
 ## 4. DMA transfers
 
