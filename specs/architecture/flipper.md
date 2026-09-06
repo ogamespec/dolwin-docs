@@ -76,6 +76,16 @@ memory protection, and the external 1T-SRAM ("Splash") interface — is in
 | `0x0C008000` | — | GFX command FIFO (PI/CP FIFO) |
 | `0xFFF00000` | 1 MB | Boot ROM |
 
+The four IO blocks that sit in the `0x0C006xxx` register window are self-contained
+and are specified at the register level separately:
+
+- **DI** — [disk-interface.md](disk-interface.md) (drive command interface).
+- **SI** — [serial-interface.md](serial-interface.md) (the four controller ports).
+- **EXI** — [expansion-interface.md](expansion-interface.md) (the three expansion
+  channels and the boot-ROM descrambler).
+- **AI (AIS)** — [audio-interface.md](audio-interface.md) (streaming audio input and
+  the audio output path).
+
 A separate *effective*-address map (as seen by the CPU through the MMU) mirrors
 this and adds the write-back/write-through (cached/uncached) aliases of main RAM
 at `0x80000000` / `0xC0000000` and the locked-cache scratchpad at `0xE0000000`.

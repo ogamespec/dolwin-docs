@@ -13,8 +13,7 @@
 </head>
 <body>
   <header class="app-header">
-    <a class="brand" href="index.html">
-      <span class="cube"></span>
+    <a class="brand" href="index.html"><span class="cube"></span>
       <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
     </a>
     <nav class="app-nav">
@@ -24,40 +23,28 @@
       <a href="gekko.html">Gekko</a>
       <a href="flipper.html">Flipper</a>
       <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html" class="active">Processor Interface</a>
       <a href="disk-drive.html">Disc Drive</a>
-      <a href="peripherals.html">Peripherals</a>
+      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="peripherals.html">Peripherals (EXI & SI)</a>
+      <a href="serial-interface.html">Serial Interface (SI)</a>
+      <a href="expansion-interface.html">Expansion Interface (EXI)</a>
     </nav>
-    <div class="theme-toggle">
-      <span>Theme</span>
+    <div class="theme-toggle"><span>Theme</span>
       <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
     </div>
   </header>
 
   <main class="wrap">
     <article>
-      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Processor Interface</p>
-      <h1>Processor Interface (PI)</h1>
-      <blockquote><strong>PI</strong> (the Processor Interface) is the block inside the
-        <strong>Flipper</strong> ASIC that sits directly on the <strong>Gekko</strong> CPU's 60x bus.
-        It is the host of the whole Flipper register space, the interrupt controller that gathers every
-        other block's interrupt into a single line to the CPU, the path that drives the Gekko clock and
-        reset, and the funnel through which the CPU reaches main memory, the embedded framebuffer (EFB), the
-        graphics command FIFO and the boot ROM — in short, the only path from the CPU into the rest of
-        the console.</blockquote>
-
-      <p>This is the register-level, emulator-focused specification. The facts are drawn from the
-        repository's hardware documentation, the Flipper RTL and the system-library reverse-engineering
-        notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only
-        implicit in the RTL — a time-out, the exact meaning of a field — it is called out as such.</p>
-
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / </p>
+      <h1>GameCube — Processor Interface (PI)</h1>
+      <blockquote><strong>PI</strong> (the Processor Interface) is the block inside the <strong>Flipper</strong> ASIC that sits directly on the <strong>Gekko</strong> CPU's 60x bus. It is the host of the whole Flipper register space, the interrupt controller that gathers every other block's interrupt into a single line to the CPU, the path that drives the Gekko clock and reset, and the funnel through which the CPU reaches main memory, the embedded/enhanced framebuffer (EFB), the graphics command FIFO and the boot ROM. In short, PI is the only path from the CPU into the rest of the console: everything else on Flipper is reached through it.</blockquote>
+      <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation, the Flipper RTL and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a time-out, the exact meaning of a field — it is called out as such.</p>
       <h2>1. Overview</h2>
-      <p>The Gekko bus is a standard PowerPC <strong>60x</strong> interface (32-bit address, 64-bit data,
-        running at <strong>162 MHz</strong>). PI converts the synchronous 60x transactions into the
-        request/acknowledge protocols used by the individual Flipper blocks, each of which has its own
-        point-to-point connection into PI.</p>
-
+      <p>The Gekko bus is a standard PowerPC <strong>60x</strong> interface (32-bit address, 64-bit data, running at <strong>162 MHz</strong>). PI converts the synchronous 60x transactions into the request/acknowledge protocols used by the individual Flipper blocks, each of which has its own point-to-point connection into PI.</p>
       <h3>1.1 Sub-blocks</h3>
       <table>
         <tr><th>Block</th><th>Role</th></tr>
@@ -71,21 +58,19 @@
         <tr><td><code>pi_pref</code></td><td>The prefetch engine — a small four-slot table that opportunistically fetches the next memory line</td></tr>
         <tr><td><code>pi_err</code> / <code>pi_errmod</code></td><td>Error detection and the error slave that absorbs illegal transactions</td></tr>
       </table>
-
       <h3>1.2 Routing model</h3>
-      <p>Every 60x transaction is decoded once, in <code>pi_dispatch</code>, into a
-        <strong>destination</strong> (<code>Dstn</code>) — main memory, the EFB, the IO/register space,
-        the CP graphics FIFO, or the ROM — and, for an IO-space access, an <strong>IO-space
-        module</strong> (<code>IOsp</code>) — CP, PE, VI, PI, MEM, DSP, IO (external interface), or the
-        error slave.</p>
-      <p>The dispatch table holds up to <strong>four</strong> outstanding transactions. A transaction is
-        removed only when the target module has accepted (for a read) or completed (for a write) it. The
-        table begins to <strong>block further AACK</strong> (see §2.6) once <strong>three</strong> entries
-        are occupied, because a prefetch transaction needs two slots.</p>
-
+      <p>Every 60x transaction is decoded once, in <code>pi_dispatch</code>, into:</p>
+      <ul>
+        <li>a <strong>destination</strong> (<code>Dstn</code>) — main memory, the EFB, the IO/register space, the CP</li>
+      </ul>
+      <p>graphics FIFO, or the ROM;</p>
+      <ul>
+        <li>and, for an IO-space access, an <strong>IO-space module</strong> (<code>IOsp</code>) — CP, PE, VI, PI,</li>
+      </ul>
+      <p>MEM, DSP, IO (external interface), or the error slave.</p>
+      <p>The dispatch table holds up to <strong>four</strong> outstanding transactions. A transaction is removed only when the target module has accepted (for a read) or completed (for a write) it. The table begins to <strong>block further AACK</strong> (see §2.6) once <strong>three</strong> entries are occupied, because a prefetch transaction needs two slots.</p>
       <h3>1.3 The 60x bus connection</h3>
-      <p>PI presents the Gekko with the classic 60x pins and a single active-low interrupt, and
-        drives the core clock and reset to the CPU:</p>
+      <p>PI presents the Gekko with the classic 60x pins and a single active-low interrupt, and drives the core clock and reset to the CPU:</p>
       <table>
         <tr><th>Signal</th><th>Width</th><th>Direction</th><th>Description</th></tr>
         <tr><td><code>A[0:31]</code></td><td>32</td><td>out (to bus)</td><td>Address</td></tr>
@@ -94,18 +79,16 @@
         <tr><td><code>AACK</code></td><td>1</td><td>out</td><td>Address acknowledge (address bus latched)</td></tr>
         <tr><td><code>TA</code></td><td>1</td><td>out</td><td>Transfer acknowledge (data beat accepted)</td></tr>
         <tr><td><code>TBST</code></td><td>1</td><td>in</td><td>Transfer burst (32-byte transfer)</td></tr>
-        <tr><td><code>TSIZ[0:2]</code></td><td>3</td><td>in</td><td>Transfer size (see §2)</td></tr>
-        <tr><td><code>TT[0:4]</code></td><td>5</td><td>in</td><td>Transfer type (see §2)</td></tr>
+        <tr><td><code>TSIZ[0:2]</code></td><td>3</td><td>in</td><td>Transfer size (see §2.2)</td></tr>
+        <tr><td><code>TT[0:4]</code></td><td>5</td><td>in</td><td>Transfer type (see §2.3)</td></tr>
         <tr><td><code>INT</code></td><td>1</td><td>out</td><td>Interrupt request (active low)</td></tr>
         <tr><td><code>HRESET</code></td><td>1</td><td>out</td><td>Hardware reset; CPU restarts at <code>0xFFF0_0100</code></td></tr>
         <tr><td><code>TRST</code></td><td>1</td><td>out</td><td>JTAG test reset (asserted with <code>HRESET</code>)</td></tr>
         <tr><td><code>SYSCLK</code></td><td>1</td><td>out</td><td>486 MHz core clock to the CPU</td></tr>
       </table>
-
       <h2>2. Gekko 60x bus transactions</h2>
       <h3>2.1 Transfer sizes (<code>TSIZ</code>)</h3>
-      <p><code>TSIZ</code> encodes the transfer size. Burst is signalled by <code>TBST</code> rather than
-        by <code>TSIZ</code>; <code>TSIZ</code> is only meaningful for single-beat transfers.</p>
+      <p><code>TSIZ</code> encodes the transfer size. Burst is signalled by <code>TBST</code> rather than by <code>TSIZ</code>; <code>TSIZ</code> is only meaningful for single-beat transfers.</p>
       <table>
         <tr><th><code>TBST</code></th><th><code>TSIZ[0:2]</code></th><th>Size</th></tr>
         <tr><td>1</td><td>—</td><td><strong>Burst</strong> (32 bytes)</td></tr>
@@ -113,80 +96,53 @@
         <tr><td>0</td><td><code>100</code></td><td>4 bytes</td></tr>
         <tr><td>0</td><td><code>010</code></td><td>2 bytes</td></tr>
       </table>
-      <p>A <strong>1-byte</strong> transfer (<code>TSIZ = 001</code>) is not a valid size on this bus and
-        raises a PI error (see §5). The byte-enable/mask for writes is derived by PI from the address bits,
-        so a sub-word access writes only the addressed bytes. Because the bus carries only 64-bit data, an
-        uncached <strong>byte</strong> or <strong>halfword</strong> store is written as a whole 8-byte
-        aligned block with the byte/halfword replicated into its lane — harmless for cached (cache-line)
-        stores, but it is why uncached <code>memset</code>-style copies and fast clear routines behave as
-        they do (see the Memory Interface spec).</p>
-
+      <p>A <strong>1-byte</strong> transfer (<code>TSIZ = 001</code>) is not a valid size on this bus and raises a PI error (see §5). The byte-enable/mask for writes is derived by PI from the address bits, so a sub-word access writes only the addressed bytes. Because the bus carries only 64-bit data, an uncached <strong>byte</strong> or <strong>halfword</strong> store is written as a whole 8-byte aligned block with the byte/halfword replicated into its lane — harmless for cached (cache-line) stores, but it is why uncached <code>memset</code>-style copies and fast clear routines behave as they do (see <a href="memory-interface.html">memory-interface.md</a>).</p>
       <h3>2.2 Transfer type (<code>TT</code>)</h3>
-      <p><code>TT[0:4]</code> names the type of transfer. The 60x-like codes include a number of
-        address-only and cache-coherency operations that do not apply to a single-CPU system; only the
-        following are meaningful to Flipper:</p>
+      <p><code>TT[0:4]</code> names the type of transfer. The 60x-like codes include a number of address-only and cache-coherency operations that do not apply to a single-CPU system; only the following are meaningful to Flipper:</p>
       <table>
-        <tr><th><code>TT</code></th><th>Name</th><th>Meaning</th></tr>
-        <tr><td><code>00010</code></td><td>single-beat write</td><td>One write to memory / IO / EFB</td></tr>
-        <tr><td><code>00110</code></td><td>burst write</td><td>32-byte write (cache line, write-gather flush)</td></tr>
+        <tr><th><code>TT</code></th><th>60x name</th><th>Flipper action</th></tr>
+        <tr><td><code>01000</code></td><td>sync</td><td>Ordering barrier — CPU writes are flushed (see §2.5)</td></tr>
+        <tr><td><code>10000</code></td><td>eieio</td><td>Ordering barrier — writes are flushed (see §2.5)</td></tr>
+        <tr><td><code>00000</code></td><td>clean block</td><td>Address-only; <code>AACK</code> only, no data</td></tr>
+        <tr><td><code>00100</code></td><td>flush block</td><td>Address-only; <code>AACK</code> only, no data</td></tr>
+        <tr><td><code>01100</code></td><td>kill block</td><td>Address-only; <code>AACK</code> only, no data</td></tr>
+        <tr><td><code>11000</code></td><td>TLB invalidate</td><td>Address-only; <code>AACK</code> only, no data</td></tr>
+        <tr><td><code>00001</code></td><td>lwarx reservation set</td><td>Address-only; <code>AACK</code> only, no data</td></tr>
+        <tr><td><code>01001</code></td><td>tlbsync</td><td>Address-only; <code>AACK</code> only, no data</td></tr>
+        <tr><td><code>01101</code></td><td>icbi</td><td>Address-only; <code>AACK</code> only, no data</td></tr>
+        <tr><td><code>00010</code></td><td>single-beat write (write-with-flush)</td><td>One write to memory / IO / EFB</td></tr>
+        <tr><td><code>00110</code></td><td>burst write (write-with-kill)</td><td>32-byte write (cache line, write-gather flush)</td></tr>
         <tr><td><code>01010</code></td><td>single-beat read</td><td>One read from memory / IO / EFB / ROM</td></tr>
         <tr><td><code>01110</code></td><td>burst read</td><td>32-byte read (cache fill)</td></tr>
-        <tr><td><code>01000</code></td><td>sync</td><td>Barrier (see §2.5)</td></tr>
-        <tr><td><code>10000</code></td><td>eieio</td><td>Ordering barrier (see §2.5)</td></tr>
-        <tr><td><code>01011</code></td><td>prefetch hint</td><td>Prefetch the next memory line (see §2.4)</td></tr>
-        <tr><td><code>10010</code> / <code>11010</code> / <code>11110</code></td><td>atomic single/burst/forward</td><td>Address-only "atomic" controls (no data)</td></tr>
-        <tr><td><code>10100</code> / <code>11100</code></td><td>single/burst with EC</td><td>Cache-control encodings (no data)</td></tr>
+        <tr><td><code>01011</code></td><td>burst read with prefetch</td><td>Fetch the line and prefetch the next (see §2.4)</td></tr>
+        <tr><td><code>10010</code></td><td>single-beat write (write-with-flush-atomic)</td><td>One write (a normal single-beat write)</td></tr>
+        <tr><td><code>11010</code></td><td>single-beat read (read-atomic)</td><td>One read (a normal single-beat read)</td></tr>
+        <tr><td><code>11110</code></td><td>burst read (read-intent-to-modify-atomic)</td><td>32-byte read (a normal burst read)</td></tr>
+        <tr><td><code>10100</code></td><td>external control word write</td><td>One write (via <code>ecowx</code>)</td></tr>
+        <tr><td><code>11100</code></td><td>external control word read</td><td>One read (via <code>eciwx</code>)</td></tr>
       </table>
-      <p>The remaining address-only codes (<code>00100</code>, <code>01100</code>, <code>11000</code>,
-        <code>00001</code>, <code>01001</code>, <code>01101</code>) are accepted as ordering/control
-        operations and move no data. All atomic/address-only and cache-coherency variants are effectively
-        <strong>not implemented</strong> in the single-CPU Flipper system: there is no snooping or
-        coherency between the CPU and any other master. PI only acts on data read/write, the two barriers,
-        and the prefetch hint.</p>
-
+      <p>The address-only codes above move no data — PI accepts them, returns <code>AACK</code>, and does nothing else. The <strong>atomic</strong> and <strong>external-control-word</strong> variants are treated as <strong>ordinary</strong> data transfers: the atomic read/write codes behave identically to the corresponding single-beat or burst access (there is no reservation or snooping in a single-CPU system), and the <code>ecowx</code>/<code>eciwx</code> external-control-word instructions are handled as a normal single-beat read/write. <code>ecowx</code>/<code>eciwx</code> are enabled through the Gekko <strong>EAR</strong> register, which is also where <code>TBST</code>/<code>TSIZ</code> are programmed; the transfer must be set to a non-burst, 4-byte size or the access is invalid. In practice the CPU only ever presents data read/write, the two barriers, and the prefetch hint, so PI's useful action reduces to those four.</p>
       <h3>2.3 Burst vs single-beat data movement</h3>
-      <p>For the <strong>memory and EFB</strong> paths, a <em>single-beat</em> transfer and a
-        <em>burst</em> transfer are both presented to the memory controller as a <strong>32-byte
-        burst</strong> — PI keeps a 12-entry by 64-bit burst write buffer to smooth the CPU's write
-        stream, and reads are issued as 32-byte line reads. The latency for a sub-line request is
-        therefore the same as for a full line. The main-memory and EFB paths share this one write buffer,
-        so a full memory write-queue also stalls PI's EFB writes.</p>
-      <p>For the <strong>IO/register space</strong>, the transfer width is fixed: only <strong>2-byte</strong>
-        and <strong>4-byte</strong> single-beat accesses are accepted; a <strong>burst</strong> (or an
-        8-byte single beat) to the register space is a PI error.</p>
-      <p>The <strong>external-interface path</strong> (<code>pi_ei</code>) — the IO register space at
-        <code>0x0C00_6000</code> and the boot-ROM region — takes this even further: every request is
-        broken into <strong>2-byte (halfword) sub-transfers</strong>. A 4-byte IO register access is two
-        halfword accesses, an 8-byte ROM read is four, and a 32-byte ROM burst is sixteen back-to-back
-        halfword reads. This is the concrete reason the register data path is 16-bit. Boot-ROM reads also
-        share a 256-bit return buffer with EFB reads and are gated on the PE being idle.</p>
-
+      <p>For the <strong>memory and EFB</strong> paths, a <em>single-beat</em> transfer and a <em>burst</em> transfer are both presented to the memory controller as a <strong>32-byte burst</strong> — PI keeps a 12-entry by 64-bit burst write buffer to smooth the CPU's write stream, and reads are issued as 32-byte line reads. The latency for a sub-line request is therefore the same as for a full line. The main-memory and EFB paths share this one write buffer, so a full memory write-queue also stalls PI's EFB writes.</p>
+      <p>For the <strong>IO/register space</strong>, the transfer width is fixed: only <strong>2-byte</strong> and <strong>4-byte</strong> single-beat accesses are accepted; a <strong>burst</strong> (or an 8-byte single beat) to the register space is a PI error.</p>
+      <p>The <strong>external-interface path</strong> (<code>pi_ei</code>) — the IO register space at <code>0x0C00_6000</code> and the boot-ROM region — takes this even further: every request is broken into <strong>2-byte (halfword) sub-transfers</strong>. A 4-byte IO register access is two halfword accesses, an 8-byte ROM read is four, and a 32-byte ROM burst is sixteen back-to-back halfword reads. This is the concrete reason the register data path is 16-bit. Boot-ROM reads also share a 256-bit return buffer with EFB reads and are gated on the PE being idle.</p>
       <h3>2.4 Prefetch</h3>
-      <p>PI implements a small, explicit prefetch engine (<code>pi_pref</code>). A prefetch hint
-        transaction (<code>TT = 0b01011</code>, always a burst read) causes PI to fetch the
-        <strong>next line</strong> (request address <code>+ 0x20</code>) and place it in a dedicated
-        prefetch buffer rather than in the normal read-return path. Later, an ordinary read whose address
-        matches a still-valid prefetch line is <strong>served from the buffer</strong> instead of
-        generating another memory read.</p>
+      <p>PI implements a small, explicit prefetch engine (<code>pi_pref</code>). A prefetch hint transaction (<code>TT = 0b01011</code>, always a burst read) causes PI to fetch the <strong>next line</strong> (request address <code>+ 0x20</code>) and place it in a dedicated prefetch buffer rather than in the normal read-return path. Later, an ordinary read whose address matches a still-valid prefetch line is <strong>served from the buffer</strong> instead of generating another memory read — saving a full memory latency.</p>
       <ul>
         <li>Prefetch is only performed for <strong>main memory, EFB and ROM</strong> destinations.</li>
-        <li>A read that matches the prefetched address <em>and</em> is 32-byte aligned consumes the
-          prefetched data (<code>used</code>). An unaligned or non-burst read, or a write to the same
-          address, <strong>kills</strong> the prefetch line.</li>
-        <li>The table holds <strong>four</strong> entries. A prefetch transaction consumes <strong>two</strong>
-          of the dispatch-table slots (one for the read request, one for the prefetch part), which is why
-          the table blocks AACK at three slots.</li>
+        <li>A read that matches the prefetched address <strong>and</strong> is 32-byte aligned consumes</li>
+      </ul>
+      <p>the prefetched data (<code>used</code>). An unaligned or non-burst read, or a write to the same address, <strong>kills</strong> the prefetch line.</p>
+      <ul>
+        <li>The table holds <strong>four</strong> entries. A prefetch transaction consumes <strong>two</strong> of the</li>
+      </ul>
+      <p>dispatch-table slots (one for the read request, one for the prefetch part), which is why the table blocks AACK at three slots.</p>
+      <ul>
         <li>On <strong>sync / eieio</strong>, all outstanding prefetch lines are invalidated.</li>
       </ul>
-      <p>The prefetch engine does <strong>not</strong> exist to speed up CPU reads in general — Gekko
-        already has a hardware cache and issues normal 32-byte burst reads. It serves the narrow case where
-        software issues an explicit prefetch hint and then reads the same line; emulators can safely model
-        it as a no-op for correctness.</p>
-
+      <p>The prefetch engine does <strong>not</strong> exist to speed up CPU reads in general — Gekko already has a hardware cache and issues normal 32-byte burst reads. It is there to serve the narrow case where software issues an explicit prefetch hint and then reads the same line; emulators can safely model it as a no-op for correctness.</p>
       <h3>2.5 sync / eieio</h3>
-      <p><code>sync</code> and <code>eieio</code> are the only ordering operations with a concrete effect.
-        They <strong>flush the write buffers in both MEM and PE</strong> (so any pending CPU/GFX writes are
-        committed to memory) and <strong>wait until</strong>:</p>
+      <p><code>sync</code> and <code>eieio</code> are the only ordering operations with a concrete effect. They <strong>flush the write buffers in both MEM and PE</strong> (so any pending CPU/GFX writes are committed to memory) and <strong>wait until</strong>:</p>
       <ol>
         <li>no transaction is still in the dispatch table,</li>
         <li>no read is outstanding,</li>
@@ -194,83 +150,63 @@
         <li>every module is idle, and</li>
         <li>both MEM and PE have finished their flush.</li>
       </ol>
-      <p>Only when all of these hold does PI deassert the barrier and let the bus proceed. In practice the
-        CPU uses <code>sync</code> before starting a DMA that reads a buffer it just wrote, and
-        <code>eieio</code> to order MMIO accesses.</p>
-
+      <p>Only when all of these hold does PI deassert the barrier and let the bus proceed. In practice the CPU uses <code>sync</code> before starting a DMA that reads a buffer it just wrote, and <code>eieio</code> to order MMIO accesses.</p>
       <h3>2.6 Transfer acknowledge / data-return</h3>
-      <p>PI issues <code>AACK</code> the cycle after <code>TS</code> for every accepted transaction. From
-        the point of view of software, a read is complete when <code>TA</code> is returned with the data on
-        the 64-bit bus; a write is complete when <code>TA</code> is returned. Data is returned big-endian.</p>
+      <p>PI issues <code>AACK</code> the cycle after <code>TS</code> for every accepted transaction. From the point of view of software, a read is complete when <code>TA</code> is returned with the data on the 64-bit bus; a write is complete when <code>TA</code> is returned. Data is returned big-endian: the 8-byte read for a burst is the first (lowest) double-word first, then the next, and so on.</p>
+      <p>Keys for emulation:</p>
       <ul>
-        <li>A <strong>read</strong> returns the <strong>critical double-word first</strong>, then wraps to
-          the rest of the line — an emulator models this by serving the requested double-word.</li>
+        <li>A <strong>read</strong> returns the <strong>critical double-word first</strong>, then wraps to the rest of</li>
+      </ul>
+      <p>the line — an emulator models this by serving the requested double-word.</p>
+      <ul>
         <li>A <strong>burst</strong> returns <strong>four</strong> 8-byte beats back-to-back (in-order).</li>
-        <li>Writes are accepted in the order the CPU presents them; PI flushes the write buffer as one burst
-          to memory.</li>
+        <li>Writes are accepted in the order the CPU presents them; PI flushes the write</li>
       </ul>
-
+      <p>buffer as one burst to memory.</p>
       <h3>2.7 What PI does not implement</h3>
-      <p>A number of 60x-bus capabilities are simply absent in the single-CPU Flipper design, and it is
-        worth knowing what can be ignored:</p>
+      <p>A number of 60x-bus capabilities are simply absent in the single-CPU Flipper design, and it is worth knowing what can be ignored:</p>
       <ul>
-        <li><strong>No cache coherency snooping.</strong> The CPU never snoops the other masters (DSP, IO,
-          CP, PE, VI) and there is no hardware to keep their reads coherent with the CPU's cached writes.
-          Coherence is achieved only by explicit flushing: a DMA writer (DSP/IO/PE) flushes its write
-          buffer before raising its interrupt, and the CPU executes <code>sync</code> (which flushes the
-          write buffer) before starting a read DMA.</li>
-        <li><strong>No write-combining inside PI.</strong> PI has only a small write buffer. The CPU-side
-          write-gather pipe (the 128-byte gather buffer flushed in 32-byte bursts) is a <strong>Gekko</strong>
-          feature, not part of PI.</li>
-        <li><strong>The fast write-acknowledge path is unused.</strong> The write-transfer acknowledge is
-          driven only by the write-buffer-available path; the fast path is dead in the shipped design.</li>
-        <li><strong>The read byte-mask is dead.</strong> The read-side <code>Rmsk</code> logic is present but
-          unused/removable; write data is qualified by a separate <code>[1:0]</code> write mask.</li>
-        <li><strong>Boot ROM is read-only.</strong> A store to <code>0xFFF0_0000</code> (or any write to the
-          ROM destination) is not serviced — it is routed to the error block and raises a PI error (code
-          <code>101</code>).</li>
-        <li><strong>The GFX FIFO is write-only.</strong> A read of the FIFO destination is an error (code
-          <code>110</code>); writes to it are treated as (special) memory writes.</li>
+        <li><strong>No cache coherency snooping.</strong> The CPU never snoops the other masters</li>
       </ul>
-      <p>The consequence is that PI does not implement a full bus-sniffing PowerPC-style coherency protocol:
-        it is a simple address/transfer router plus an interrupt controller, which is all a single-CPU
-        console needs.</p>
-
+      <p>(DSP, IO, CP, PE, VI) and there is no hardware to keep their reads coherent with the CPU's cached writes. Coherence is achieved only by explicit flushing: a DMA writer (DSP/IO/PE) flushes its write buffer before raising its interrupt, and the CPU executes <code>sync</code> (which flushes the write buffer) before starting a read DMA.</p>
+      <ul>
+        <li><strong>No write-combining inside PI.</strong> PI has only a small write buffer. The</li>
+      </ul>
+      <p>CPU-side write-gather pipe (the 128-byte gather buffer flushed in 32-byte bursts) is a <strong>Gekko</strong> feature, not part of PI.</p>
+      <ul>
+        <li><strong>The fast write-acknowledge path is unused.</strong> The write-transfer acknowledge</li>
+      </ul>
+      <p>is driven only by the write-buffer-available path; the fast path is dead in the shipped design.</p>
+      <ul>
+        <li><strong>The read byte-mask is dead.</strong> The read-side <code>Rmsk</code> logic is present but</li>
+      </ul>
+      <p>unused/removable; write data is qualified by a separate <code>[1:0]</code> write mask.</p>
+      <ul>
+        <li><strong>Boot ROM is read-only.</strong> A store to <code>0xFFF0_0000</code> (or any write to the ROM</li>
+      </ul>
+      <p>destination) is not serviced — it is routed to the error block and raises a PI error (code <code>101</code>).</p>
+      <ul>
+        <li><strong>The GFX FIFO is write-only.</strong> A read of the FIFO destination is an error</li>
+      </ul>
+      <p>(code <code>110</code>); writes to it are treated as (special) memory writes.</p>
+      <p>The consequence is that PI does not implement a full bus-sniffing PowerPC-style coherency protocol: it is a simple address/transfer router plus an interrupt controller, which is all a single-CPU console needs.</p>
       <h2>3. Register access</h2>
       <h3>3.1 The register bus is 16-bit</h3>
-      <p>Every Flipper register — in PI and in every other block — is reached through a <strong>16-bit</strong>
-        data path. <code>pi_*_addr</code> is a halfword-granularity address (<code>[8:1]</code>) and
-        <code>pi_*_data</code> is <code>[15:0]</code>. There is no 32-bit register port.</p>
-      <p>A <strong>32-bit</strong> CPU access is therefore split by PI into <strong>two 16-bit</strong>
-        transfers, <strong>big-endian</strong>: the <strong>high word</strong> is transferred at the base
-        (even) address and the <strong>low word</strong> at <code>base + 1</code> (odd) address. So a
-        32-bit read of a register at <code>0x0C003000</code> returns <code>[31:16]</code> from <code>+0</code>
-        and <code>[15:0]</code> from <code>+2</code>. The hardware implements this by multiplexing the
-        16-bit half out of a 32-bit internal register according to address bit 1.</p>
-
+      <p>Every Flipper register — in PI and in every other block — is reached through a <strong>16-bit</strong> data path. <code>pi_*_addr</code> is a halfword-granularity address (<code>[8:1]</code>) and <code>pi_*_data</code> is <code>[15:0]</code>. There is no 32-bit register port.</p>
+      <p>A <strong>32-bit</strong> CPU access is therefore split by PI into <strong>two 16-bit transfers</strong>, <strong>big-endian</strong>: the <strong>high word</strong> is transferred at the base (even) address and the <strong>low word</strong> at <code>base + 1</code> (odd) address. So a 32-bit read of a register at <code>0x0C003000</code> returns <code>[31:16]</code> from <code>+0</code> and <code>[15:0]</code> from <code>+2</code>. The hardware implements this by multiplexing the 16-bit half out of a 32-bit internal register according to address bit 1.</p>
       <h3>3.2 The 2-byte / 4-byte handshake</h3>
-      <p><code>pi_mod</code> (used for CP, PI, VI and DSP) manages the register handshake with a small
-        state machine:</p>
+      <p><code>pi_mod</code> (used for CP, PI, VI and DSP) manages the register handshake with a small state machine:</p>
       <ul>
         <li>a <strong>2-byte</strong> request: <code>REQ2 → ACK2</code>;</li>
-        <li>a <strong>4-byte</strong> request: <code>REQ40 (high word, even address) → ACK40 → REQ41 (low
-          word, odd address) → ACK41</code>.</li>
+        <li>a <strong>4-byte</strong> request: `REQ40 (high word, even address) → ACK40 → REQ41 (low word,</li>
       </ul>
-      <p>So a 4-byte access is always two back-to-back 16-bit accesses to consecutive halfwords, high word
-        first. <code>pi_mem</code> does the same for the MEM register space.</p>
-
+      <p>odd address) → ACK41`.</p>
+      <p>So a 4-byte access is always two back-to-back 16-bit accesses to consecutive halfwords, high word first. <code>pi_mem</code> does the same for the MEM register space.</p>
       <h3>3.3 Register space</h3>
-      <p>PI hosts the register space that the CPU sees at <strong><code>0x0C003000</code></strong> (the
-        uncached physical alias is <code>0xCC003000</code>). The full Flipper register-space map is given
-        in §6; the PI registers themselves are listed in §8 and §9.</p>
-
+      <p>PI hosts the register space that the CPU sees at <strong><code>0x0C003000</code></strong> (the uncached physical alias is <code>0xCC003000</code>). The full Flipper register-space map is given in §6.2; the PI registers themselves are listed in §8 and §9.</p>
       <h2>4. Interrupts</h2>
       <h3>4.1 Interrupt sources</h3>
-      <p>The CPU has a <strong>single</strong> interrupt line (<code>INT</code>, active-low) driven by PI. PI
-        aggregates the interrupt requests from every other Flipper block into one 32-bit <strong>cause</strong>
-        register (<code>INTSR</code>). Each source has a corresponding bit in the <strong>mask/re-enable</strong>
-        register (<code>INTMSK</code>). A source is reported only if the corresponding mask bit is set; the
-        aggregated, masked result drives <code>INT</code>.</p>
+      <p>The CPU has a <strong>single</strong> interrupt line (<code>INT</code>, active-low) driven by PI. PI aggregates the interrupt requests from every other Flipper block into one 32-bit <strong>cause</strong> register (<code>INTSR</code>). Each source has a corresponding bit in the <strong>mask/re-enable</strong> register (<code>INTMSK</code>). A source is reported only if the corresponding mask bit is set; the aggregated, masked result drives <code>INT</code> (when any masked source is pending, <code>INT</code> is asserted low).</p>
       <table>
         <tr><th>Bit</th><th><code>INTSR</code></th><th><code>INTMSK</code></th><th>Source</th></tr>
         <tr><td>0</td><td><code>PIINT</code></td><td><code>PIMSK</code></td><td>PI error (bad address/transfer)</td></tr>
@@ -285,47 +221,34 @@
         <tr><td>9</td><td><code>PEINT0</code></td><td><code>PEMSK0</code></td><td>Pixel engine 0</td></tr>
         <tr><td>10</td><td><code>PEINT1</code></td><td><code>PEMSK1</code></td><td>Pixel engine 1</td></tr>
         <tr><td>11</td><td><code>CPINT</code></td><td><code>CPMSK</code></td><td>Command processor</td></tr>
-        <tr><td>12</td><td><code>DBGINT</code></td><td><code>DBGMSK</code></td><td>Debug (JTAG / development)</td></tr>
-        <tr><td>13</td><td><code>SDINT</code></td><td><code>SDMSK</code></td><td>Security / decode</td></tr>
-        <tr><td>15:14</td><td>—</td><td>—</td><td>Reserved</td></tr>
+        <tr><td>12</td><td><code>DBGINT</code></td><td><code>DBGMSK</code></td><td>Debug interrupt — external <code>dbgintb</code> pin, set on its falling edge</td></tr>
+        <tr><td>13</td><td><code>SDINT</code></td><td><code>SDMSK</code></td><td>SDRAM interrupt — external <code>sdintb</code> pin, set on its falling edge</td></tr>
+        <tr><td>14</td><td><code>ACRINT</code></td><td><code>ACRMSK</code></td><td>AHB/subsystem interrupt (only meaningful when expanded address mode is enabled)</td></tr>
+        <tr><td>15</td><td>—</td><td>—</td><td>Reserved</td></tr>
         <tr><td>16</td><td><code>RSTVAL</code></td><td>—</td><td>Reset value / status (read-only)</td></tr>
         <tr><td>31:17</td><td>—</td><td>—</td><td>Reserved</td></tr>
       </table>
-      <p><code>RSTVAL</code> (bit 16) is read-only and reports the state of the asynchronous
-        <code>rstswb</code> line after synchronising — it tells software whether the reset switch is
-        currently pressed or released.</p>
-
+      <p><code>RSTVAL</code> (bit 16) is read-only and reports the state of the asynchronous <code>rstswb</code> line after synchronising — it tells software whether the reset switch is currently pressed or released.</p>
       <h3>4.2 Masking and the <code>INT</code> line</h3>
-      <p><code>INTMSK</code> is write-only for the mask bits (it also duplicates the <code>INTSR</code> bit
-        position for each source). Both <code>INTSR</code> and <code>INTMSK</code> <strong>reset to
-        zero</strong>: no interrupt is pending and every interrupt is masked, so a freshly-powered Flipper
-        raises no <code>INT</code>.</p>
-      <p><code>INT</code> is the OR of <code>(INTMSK &amp; pending source)</code>. Because there is a single
-        line, the OS keeps a master handler that reads <code>INTSR</code>, and dispatches.
-        <code>INT</code> is cleared when the pending source is cleared (the source block clears its own
-        status) and, for the PI-specific sources, when software writes back to <code>INTSR</code>.</p>
-
+      <p>The sources fall into two groups with different servicing rules:</p>
+      <ul>
+        <li><strong>PIINT</strong> (<code>INTSR[0]</code>) and <strong>RSWINT</strong> (<code>INTSR[1]</code>) are owned by PI. Each has a</li>
+      </ul>
+      <p>(Status, Mask) pair in PI, and the Status bit is <strong>write-1-to-clear</strong>.</p>
+      <ul>
+        <li>The <strong>module</strong> sources (CP, PE, VI, MEM, DSP, IO, and the pin-based</li>
+      </ul>
+      <p><code>DBGINT</code>/<code>SDINT</code>/<code>ACRINT</code>) have a <strong>read-only</strong> Status bit in PI, and each has a <strong>two-level</strong> mask — one mask bit in PI and a separate mask in the source module. The clear bit lives <strong>inside the source module</strong>; writing it clears the Status bit both in the module and in PI (it is not cleared by writing <code>INTSR</code>).</p>
+      <p>For a particular source an interrupt is generated only if its Status <strong>and</strong> local module mask are both set; it is forwarded to the CPU only if that source is not masked in PI. If a Status bit is set but masked, no interrupt is raised, though the CPU can still poll the Status bit to see the pending source.</p>
+      <p>Both <code>INTSR</code> and <code>INTMSK</code> <strong>reset to zero</strong>, so a freshly-powered Flipper raises no <code>INT</code>. All interrupts entering PI are <strong>active-high</strong>; the single <code>INT</code> line to the CPU is <strong>active-low</strong>. Because there is one line, the OS keeps a master handler that reads <code>INTSR</code>, masks it, and dispatches.</p>
       <h3>4.3 Clearing <code>INTSR</code></h3>
-      <p><code>INTSR</code> is <strong>read/write</strong>. Writing a <code>1</code> to a bit in
-        <code>INTSR</code> <strong>clears</strong> that interrupt (the standard PowerPC "write 1 to clear"
-        convention). Software writes back the bit positions it has serviced. Writes to the read-only
-        <code>RSTVAL</code> bit are ignored.</p>
-
+      <p><code>INTSR</code> is read/write, but only <code>SDINT</code>, <code>DBGINT</code>, <code>RSWINT</code> and <code>PIINT</code> are cleared by writing a <code>1</code> to their bit in <code>INTSR</code> (the standard "write 1 to clear" convention; writing <code>0</code> has no effect). Writing to the module bits (<code>CPINT</code>, <code>PEINT0/1</code>, <code>VIINT</code>, <code>MEMINT</code>, <code>DSPINT</code>, <code>AIINT</code>, <code>EXIINT</code>, <code>SIINT</code>, <code>DIINT</code>) has <strong>no effect</strong> — those Status bits are cleared only by the source module's own clear register, which also clears the PI Status bit. Writes to the read-only <code>RSTVAL</code> bit are ignored.</p>
       <h3>4.4 The PI error interrupt</h3>
-      <p><code>PIINT</code> is set by the PI itself whenever a transaction is illegal (see §5). It is
-        cleared by writing bit 0 of <code>INTSR</code>. Clearing <code>PIINT</code> also
-        <strong>unblocks</strong> the error-address/status latches so a subsequent error can be captured.</p>
-
+      <p><code>PIINT</code> is set by the PI itself whenever a transaction is illegal (see §5). It is cleared by writing bit 0 of <code>INTSR</code>. Clearing <code>PIINT</code> also <strong>unblocks</strong> the error-address/status latches so a subsequent error can be captured (§5.2).</p>
       <h2>5. PI errors</h2>
-      <p>A transaction that Flipper cannot honour is not silently dropped — PI latches the offending
-        <strong>address</strong> and an <strong>error code</strong> and raises <code>PIINT</code>. These are
-        the only "exceptions" the PI generates; there is no bus-wide abort signal, and the transaction simply
-        does not complete and does not touch memory.</p>
-
+      <p>A transaction that Flipper cannot honour is not silently dropped — PI latches the offending <strong>address</strong> and an <strong>error code</strong> and raises <code>PIINT</code>. These are the only "exceptions" the PI generates; there is no bus-wide abort signal, and the transaction simply does not complete and does not touch memory.</p>
       <h3>5.1 Error codes (<code>PIESR</code>)</h3>
-      <p><code>PIESR[2:0]</code> holds the error code. <code>PIEAR[31:0]</code> holds the offending address.
-        <code>PIEAR</code> is captured at the same time as <code>PIESR</code> and only updates while the
-        error latch is unblocked.</p>
+      <p><code>PIESR[2:0]</code> holds the error code. <code>PIEAR[31:0]</code> holds the offending address. <code>PIEAR</code> is captured at the same time as <code>PIESR</code> and only updates while the error latch is unblocked.</p>
       <table>
         <tr><th>Code</th><th>Meaning</th></tr>
         <tr><td><code>001</code></td><td><strong>Misaligned transfer</strong> — the address is not aligned to the transfer size (e.g. a 4-byte read from a mod-4 address, a burst write not 32-byte aligned).</td></tr>
@@ -335,15 +258,10 @@
         <tr><td><code>101</code></td><td><strong>Write to ROM</strong> — the boot-ROM region is read-only.</td></tr>
         <tr><td><code>110</code></td><td><strong>Read from the CP FIFO</strong> — the graphics command FIFO is write-only.</td></tr>
       </table>
-
       <h3>5.2 Error-address latch (<code>PIEAR</code> / earblock)</h3>
-      <p><code>set_piint</code> latches <code>PIEAR</code> and <code>PIESR</code> <em>once</em>. After the
-        first error the latch is <strong>blocked</strong> (<code>earblock</code>) until software clears
-        <code>PIINT</code>. So consecutive errors only record the first one; software must service and
-        clear <code>PIINT</code> before a new error can be captured. This prevents a repeating error from
-        overwriting the address of the original fault.</p>
-
+      <p><code>set_piint</code> latches <code>PIEAR</code> and <code>PIESR</code> <em>once</em>. After the first error the latch is <strong>blocked</strong> (<code>earblock</code>) until software clears <code>PIINT</code>. So consecutive errors only record the first one; software must service and clear <code>PIINT</code> before a new error can be captured. This prevents a repeating error from overwriting the address of the original fault.</p>
       <h3>5.3 Which accesses raise errors</h3>
+      <p>Summarising the decode and error rules:</p>
       <table>
         <tr><th>Access</th><th>Behaviour</th></tr>
         <tr><td>Main-memory read, 8/4 bytes, aligned</td><td>OK</td></tr>
@@ -364,25 +282,19 @@
         <tr><td>CP FIFO read</td><td><strong>Error <code>110</code></strong></td></tr>
         <tr><td>Any address outside all regions</td><td><strong>Error <code>100</code></strong></td></tr>
       </table>
-
       <h2>6. Physical memory map</h2>
       <p>The CPU's physical map, as decoded by PI:</p>
       <table>
         <tr><th>Address</th><th>Size</th><th>Resource</th><th>Notes</th></tr>
         <tr><td><code>0x0000_0000</code></td><td>24 MB</td><td>Main RAM</td><td>Two 12 MB 1T-SRAM banks at <code>0x0000_0000</code> and <code>0x0180_0000</code>; decoded as a 64 MB window</td></tr>
         <tr><td><code>0x0800_0000</code></td><td>32 MB (2 MB used)</td><td>Embedded framebuffer (EFB)</td><td>On-chip 1T-SRAM</td></tr>
-        <tr><td><code>0x0C00_0000</code></td><td>—</td><td>Flipper register space</td><td>See §6.1</td></tr>
-        <tr><td><code>0x0C00_8000</code></td><td>4 KB</td><td>GFX command FIFO</td><td>Write-only (see §6.2)</td></tr>
+        <tr><td><code>0x0C00_0000</code></td><td>—</td><td>Flipper register space</td><td>See §6.2</td></tr>
+        <tr><td><code>0x0C00_8000</code></td><td>4 KB</td><td>GFX command FIFO</td><td>Write-only (see §6.3)</td></tr>
         <tr><td><code>0xFFF0_0000</code></td><td>1 MB</td><td>Boot ROM</td><td>Read-only; Gekko reset vector <code>0xFFF0_0100</code></td></tr>
       </table>
-      <p>The 64 MB main-memory window covers both RAM banks plus the reserved portion. Addresses between
-        the end of RAM and the top of this window are still decoded as memory (they are physically idle); an
-        access there does not raise a PI error but reads back idle bus data.</p>
-
+      <p>The 64 MB main-memory window covers both RAM banks plus the reserved portion. Addresses between the end of RAM and the top of this window are still decoded as memory (they are physically idle); an access there does not raise a PI error but reads back idle bus data.</p>
       <h3>6.1 The <code>0x0C00_xxxx</code> register space</h3>
-      <p>The low 12 bits of a register-space address select the block; the next 3 bits (<code>[14:12]</code>)
-        select the IO-space module, and bits <code>[8:1]</code> select the register halfword within that
-        block:</p>
+      <p>The low 12 bits of a register-space address select the block; the next 3 bits (<code>[14:12]</code>) select the IO-space module, and bits <code>[8:1]</code> select the register halfword within that block:</p>
       <table>
         <tr><th>Base</th><th>IOsp</th><th>Block</th></tr>
         <tr><td><code>0x0C00_0000</code></td><td><code>000</code></td><td>Command Processor (CP)</td></tr>
@@ -394,12 +306,8 @@
         <tr><td><code>0x0C00_6000</code></td><td><code>110</code></td><td>IO (DI / SI / EXI / AIS)</td></tr>
         <tr><td><code>0x0C00_8000</code></td><td>—</td><td>GFX command FIFO</td></tr>
       </table>
-
       <h3>6.2 CP / GFX FIFO</h3>
-      <p>The <strong>GFX command FIFO</strong> (the "PI FIFO") is the write path the CPU uses to feed the
-        graphics command processor. The CPU writes <strong>32-byte bursts</strong> to
-        <code>0x0C00_8000</code>; each burst advances the write pointer by 32 bytes. Four registers control
-        it:</p>
+      <p>The <strong>GFX command FIFO</strong> (the "PI FIFO") is the write path the CPU uses to feed the graphics command processor. The CPU writes <strong>32-byte bursts</strong> to <code>0x0C00_8000</code>; each burst advances the write pointer by 32 bytes. Four registers control it:</p>
       <table>
         <tr><th>Register</th><th>Offset</th><th>Meaning</th></tr>
         <tr><td><code>CPBAS</code></td><td><code>0x0C</code></td><td>FIFO base — the value the write pointer is reset to on wraparound</td></tr>
@@ -407,18 +315,11 @@
         <tr><td><code>CPWRT</code></td><td><code>0x14</code></td><td>Write pointer (current address); bit 26 = <code>WRAP</code> flag</td></tr>
         <tr><td><code>CPABT</code></td><td><code>0x18</code></td><td>Abort — writing 1 forces a hardware abort/GFX reset</td></tr>
       </table>
-      <p>The write pointer (<code>CPWRT</code>) advances by 32 per written burst, wraps to <code>CPBAS</code>
-        when it equals <code>CPTOP</code>, and sets the <code>WRAP</code> flag bit. <code>CPABT</code>
-        forces the GFX into a reset state (<code>gfxrstb</code>) unconditionally when set.</p>
-
+      <p>The write pointer (<code>CPWRT</code>) advances by 32 per written burst; when it reaches <code>CPTOP - 32</code> and is incremented it wraps to <code>CPBAS</code>, and it sets the <code>WRAP</code> flag bit. <code>WRAP</code> is cleared by any write to <code>CPWRT</code>, regardless of the data value. <code>CPABT</code> forces the GFX into a reset state (<code>gfxrstb</code>) unconditionally when set.</p>
+      <p>The <code>CPBAS</code>/<code>CPTOP</code>/<code>CPWRT</code> address fields are <code>[25:5]</code> (a 32-byte-unit address) in the normal (compatible) address mode; in expanded address mode their full <code>[28:5]</code> range is exposed, though in practice the FIFO should be kept in the lower 48MB ("Napa") memory region, with the upper <code>[28:26]</code> bits left <code>0</code>.</p>
       <h2>7. Resets</h2>
       <h3>7.1 Cold (power-on) reset</h3>
-      <p>On power-up <code>PorB</code> (power-on reset) is asserted. PI synchronises this through a chain of
-        reset synchronisers and drives <strong><code>Flipper_RstB</code></strong> and
-        <strong><code>CPU_RstB</code></strong> (active low). When they deassert, the Gekko starts fetching
-        from <strong><code>0xFFF0_0100</code></strong> in the boot ROM. PI also asserts
-        <code>TRST</code> with <code>HRESET</code> so the CPU's JTAG logic is reset together with the core.</p>
-
+      <p>On power-up <code>PorB</code> (power-on reset) is asserted. PI synchronises this through a chain of reset synchronisers and drives <strong><code>Flipper_RstB</code></strong> and <strong><code>CPU_RstB</code></strong> (active low). When they deassert, the Gekko starts fetching from <strong><code>0xFFF0_0100</code></strong> in the boot ROM. PI also asserts <strong><code>TRST</code></strong> with <code>HRESET</code> so the CPU's JTAG logic is reset together with the core.</p>
       <h3>7.2 Warm (software) reset via <code>CONFIG</code></h3>
       <p>The <code>CONFIG</code> register at <code>0x0C00_3024</code> is the reset control. Bits:</p>
       <table>
@@ -428,36 +329,17 @@
         <tr><td>2</td><td><code>DIRSTB</code></td><td>Write <code>0</code> to reset the disc interface; write <code>1</code> to release</td></tr>
         <tr><td>31:3</td><td><code>PICFG</code></td><td>Reserved / configuration</td></tr>
       </table>
-      <p><code>SYSRSTB</code> behaves as a <strong>pulse</strong>: writing <code>0</code> asserts reset,
-        starts an internal down-counter loaded from <strong><code>DURAR</code></strong>, and when the
-        counter reaches zero the reset is released automatically. Asserting <code>SYSRSTB</code> also
-        asserts <code>MEMRSTB</code> and <code>DIRSTB</code>. Writing <code>1</code> to
-        <code>CONFIG[0]</code> releases the reset early.</p>
-      <p><code>DURAR</code> (<code>0x0C00_3028</code>) sets the reset duration in CPU cycles; its reset value
-        is <code>0x1FF</code> (511 cycles). Setting a large value keeps the reset asserted for longer.</p>
-      <p><code>MEMRSTB</code> and <code>DIRSTB</code> are <strong>read/write</strong> (their state is readable
-        via <code>CONFIG</code>); <code>SYSRSTB</code> is <strong>write-only</strong> and reads back as
-        <code>0</code>. The memory interface is released automatically shortly after power-on, while the
-        disc interface is left asserted until the boot code writes <code>CONFIG</code> to release it.</p>
-
+      <p><code>SYSRSTB</code> behaves as a <strong>pulse</strong>: writing <code>0</code> asserts the reset and starts an internal <strong>up-counter</strong> from 0; when it reaches the value in <strong><code>PIRDR</code></strong> the system reset is released automatically. Asserting <code>SYSRSTB</code> also asserts <code>MEMRSTB</code> and <code>DIRSTB</code> (so DI and the memory interface are reset with the system). Writing <code>1</code> to <code>CONFIG[0]</code> releases the system reset early.</p>
+      <p>There are therefore <strong>three</strong> software-initiated resets — whole system, DI only, and memory only — all driven by bits in <code>CONFIG</code>. Software reset does not modify <code>PIRDR</code>: its value is set on power-on reset and left untouched by a warm reset.</p>
+      <p><code>PIRDR</code> (<code>0x0C00_3028</code>, <code>[9:0]</code>) selects the reset duration in CPU cycles; its power-on reset value is <code>0x1FF</code> (511 cycles). Setting a larger value keeps the system reset asserted longer. <code>PIRDR</code> is initialised on <strong>cold</strong> (power-on) reset but is <strong>not</strong> re-initialised on a warm (software) reset.</p>
+      <p><code>MEMRSTB</code> and <code>DIRSTB</code> are <strong>read/write</strong> (their state is readable via <code>CONFIG</code>); <code>SYSRSTB</code> is <strong>write-only</strong> and reads back as <code>0</code>. <code>CONFIG</code> is initialised on a cold reset only. After power-on the memory interface is released automatically shortly after reset deasserts, while the disc interface is left asserted until the boot code writes <code>CONFIG</code> to release it; once the system reset is deasserted by Flipper, DI and memory can only be released by software. On reset deassertion Flipper comes out of reset a few cycles before the CPU, so it is ready when the CPU starts issuing bus requests.</p>
       <h3>7.3 GFX reset</h3>
-      <p><code>gfxrstb</code> is derived by PI as <code>~(PIABT)</code> AND <code>Flipper_RstB</code>. It is
-        normally asserted high; it is pulled low (GFX held in reset) when either the whole Flipper is reset
-        or the <code>PIABT</code> (CP abort) bit is set.</p>
-
+      <p><code>gfxrstb</code> is derived by PI as <code>~(PIABT)</code> AND <code>Flipper_RstB</code>. It is normally asserted high; it is pulled low (GFX held in reset) when either the whole Flipper is reset or the <code>PIABT</code> (CP abort) bit is set.</p>
       <h3>7.4 The reset switch (<code>RSWINT</code>)</h3>
-      <p>The console's reset button is wired to <code>rstswb</code>. When it is pressed (a falling edge on
-        the synchronised line), PI sets the <strong><code>RSWINT</code></strong> interrupt rather than
-        resetting immediately. The OS's interrupt handler decides what to do — typically a clean shutdown or
-        a warm reboot — so the reset is <strong>software-controlled</strong>, not a bare hardware reset.
-        <code>rstswb</code>'s current level is also readable as <code>RSTVAL</code>
-        (<code>INTSR[16]</code>).</p>
-
+      <p>The console's reset button is wired to <code>rstswb</code>. When it is pressed (a falling edge on the synchronised line), PI sets the <strong><code>RSWINT</code></strong> interrupt rather than resetting immediately. The OS's interrupt handler decides what to do — typically a clean shutdown or a warm reboot — so the reset is <strong>software-controlled</strong>, not a bare hardware reset. <code>rstswb</code>'s current level is also readable as <code>RSTVAL</code> (<code>INTSR[16]</code>).</p>
+      <p>Debouncing of the switch is left to software: the interrupt handler can mask <code>RSWINT</code>, write <code>1</code> to clear the status bit, poll <code>RSTVAL</code> until the switch has settled, and then re-enable <code>RSWINT</code>.</p>
       <h2>8. Register map</h2>
-      <p>The PI registers occupy <code>0x0C00_3000</code>–<code>0x0C00_3036</code> (uncached alias
-        <code>0xCC00_3000</code>). Each register is <strong>32-bit</strong> internally, addressed as two
-        16-bit halves (high at the base, low at base+1). The table gives the byte offset from
-        <code>0x0C00_3000</code>.</p>
+      <p>The PI registers occupy <code>0x0C00_3000</code>–<code>0x0C00_3036</code> (uncached alias <code>0xCC00_3000</code>). Each register is <strong>32-bit</strong> internally, addressed as two 16-bit halves (high at the base, low at base+1). The table gives the byte offset from <code>0x0C00_3000</code>.</p>
       <table>
         <tr><th>Addr</th><th>Name</th><th>R/W</th><th>Description</th></tr>
         <tr><td><code>0x00</code></td><td><code>INTSR</code></td><td>R/W</td><td>Interrupt cause (write 1 to clear)</td></tr>
@@ -474,16 +356,11 @@
         <tr><td><code>0x30</code></td><td><code>STRGTH</code></td><td>R/W</td><td>Interface pad drive strength</td></tr>
         <tr><td><code>0x34</code></td><td><code>CPUDBB</code></td><td>R/W</td><td>CPU dead-cycle / bus-cycle control</td></tr>
       </table>
-
       <h2>9. Register fields</h2>
       <h3>9.1 <code>INTSR</code> (0x00, 32-bit)</h3>
-      <p>The interrupt cause register. Bits are defined in §4.1. Reset <code>0x0000_0000</code>. Writing a
-        <code>1</code> to a bit clears that interrupt; the <code>RSTVAL</code> bit (16) is read-only.</p>
-
+      <p>The interrupt cause register. Bits are defined in §4.1. Reset <code>0x0000_0000</code>. Writing a <code>1</code> to a bit clears that interrupt; the <code>RSTVAL</code> bit (16) is read-only.</p>
       <h3>9.2 <code>INTMSK</code> (0x04, 32-bit)</h3>
-      <p>The interrupt mask. Reset <code>0x0000_0000</code> (all masked). The bit positions match
-        <code>INTSR</code> (§4.1) but only the low 14 bits are implemented; the upper bits read as <code>0</code>.</p>
-
+      <p>The interrupt mask. Reset <code>0x0000_0000</code> (all masked). The bit positions match <code>INTSR</code> (§4.1) but only the low 14 bits are implemented; the upper bits read as <code>0</code>.</p>
       <h3>9.3 <code>CPBAS</code> (0x0C, 32-bit)</h3>
       <p>GFX FIFO base. Bits:</p>
       <table>
@@ -491,7 +368,6 @@
         <tr><td>25:5</td><td><code>BASE</code></td><td>FIFO base address (the value <code>CPWRT</code> resets to on wrap)</td><td><code>0</code></td></tr>
         <tr><td>4:0</td><td>—</td><td>Reserved (zero)</td><td><code>0</code></td></tr>
       </table>
-
       <h3>9.4 <code>CPTOP</code> (0x10, 32-bit)</h3>
       <p>GFX FIFO top. Bits:</p>
       <table>
@@ -499,7 +375,6 @@
         <tr><td>25:5</td><td><code>TOP</code></td><td>FIFO top address (<code>CPWRT</code> wraps to <code>BASE</code> when it reaches <code>TOP</code>)</td><td><code>0</code></td></tr>
         <tr><td>4:0</td><td>—</td><td>Reserved (zero)</td><td><code>0</code></td></tr>
       </table>
-
       <h3>9.5 <code>CPWRT</code> (0x14, 32-bit)</h3>
       <p>GFX FIFO write pointer. Bits:</p>
       <table>
@@ -508,10 +383,8 @@
         <tr><td>26</td><td><code>WRAP</code></td><td>Set to <code>1</code> when the pointer reaches <code>TOP</code> and wraps; cleared when <code>CPWRT</code> is written</td><td><code>0</code></td></tr>
         <tr><td>4:0</td><td>—</td><td>Reserved (zero)</td><td><code>0</code></td></tr>
       </table>
-
       <h3>9.6 <code>CPABT</code> (0x18, 32-bit)</h3>
       <p>GFX FIFO abort. Bit 0 = <code>CPABT</code> (write <code>1</code> to force a GFX reset/abort). Reset <code>0</code>.</p>
-
       <h3>9.7 <code>PIESR</code> (0x1C, 32-bit)</h3>
       <p>PI error status. Bits:</p>
       <table>
@@ -519,11 +392,8 @@
         <tr><td>2:0</td><td><code>PESR</code></td><td>Error code (see §5.1)</td><td><code>0</code></td></tr>
         <tr><td>31:3</td><td>—</td><td>Reserved</td><td><code>0</code></td></tr>
       </table>
-
       <h3>9.8 <code>PIEAR</code> (0x20, 32-bit, read-only)</h3>
-      <p>The address of the PI error. Captured when <code>PIINT</code> is set; held until
-        <code>PIINT</code> is cleared.</p>
-
+      <p>The address of the PI error. Captured when <code>PIINT</code> is set; held until <code>PIINT</code> is cleared.</p>
       <h3>9.9 <code>CONFIG</code> (0x24, 32-bit)</h3>
       <p>Reset / configuration. Bits:</p>
       <table>
@@ -533,22 +403,27 @@
         <tr><td>2</td><td><code>DIRSTB</code></td><td>Disc-interface reset</td><td><code>0</code> (held until software releases)</td></tr>
         <tr><td>31:3</td><td><code>PICFG</code></td><td>Reserved</td><td><code>0</code></td></tr>
       </table>
-      <p><code>SYSRSTB</code> is write-only and reads as <code>0</code>. <code>MEMRSTB</code>/<code>DIRSTB</code>
-        are R/W and read back their state.</p>
-
+      <p><code>SYSRSTB</code> is write-only and reads as <code>0</code>. <code>MEMRSTB</code>/<code>DIRSTB</code> are R/W and read back their state. The memory interface is released automatically shortly after power-on, while the disc interface is left asserted until the boot code writes <code>CONFIG</code> to release it.</p>
       <h3>9.10 <code>DURAR</code> (0x28, 32-bit)</h3>
-      <p>Software-reset duration. <code>PIRDR[9:0]</code> = number of CPU cycles the <code>SYSRSTB</code>
-        pulse is held. Reset <code>0x1FF</code> (511). The field was widened to 10 bits to allow up to 1024
-        cycles.</p>
-
+      <p>Software-reset duration. <code>PIRDR[9:0]</code> = number of CPU cycles the <code>SYSRSTB</code> pulse is held. Reset <code>0x1FF</code> (511). The field was widened to 10 bits to allow up to 1024 cycles.</p>
       <h3>9.11 <code>CHIPID</code> (0x2C, 32-bit, read-only)</h3>
-      <p>The Flipper chip revision / ID, hard-wired and copied into the register on reset.</p>
-
+      <p>A hard-wired chip identifier, copied into the register on reset. The value packs a revision and two ASCII vendor fields:</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>Meaning</th></tr>
+        <tr><td>31:28</td><td><code>REV</code></td><td>Chip revision</td></tr>
+        <tr><td>27:12</td><td><code>PART</code></td><td>ASCII <code>"FP"</code> (<code>0x4650</code>) — from "FliPPer"</td></tr>
+        <tr><td>11:1</td><td><code>COMPANY</code></td><td>ASCII <code>"X"</code> (<code>0x058</code>)</td></tr>
+        <tr><td>0</td><td>—</td><td>Always <code>1</code> (the protocol requires the LSB to be set)</td></tr>
+      </table>
+      <p>The retail revisions read:</p>
+      <table>
+        <tr><th>Revision</th><th><code>CHIPID</code></th></tr>
+        <tr><td>Rev A</td><td><code>0x046500B1</code></td></tr>
+        <tr><td>Rev B</td><td><code>0x146500B1</code></td></tr>
+        <tr><td>Rev C</td><td><code>0x246500B1</code></td></tr>
+      </table>
       <h3>9.12 <code>STRGTH</code> (0x30, 32-bit)</h3>
-      <p>Interface drive strength. Nine interfaces, each a 3-bit field. The reset value is <code>2</code>
-        (<code>0b010</code>) for every interface — this is the value the boot firmware programs early, and it
-        must not be raised carelessly (large values on some interfaces can damage the pads if held for a
-        long time).</p>
+      <p>Interface drive strength. Nine interfaces, each a 3-bit field. The reset value is <code>2</code> (<code>0b010</code>) for every interface — this is the value the boot firmware programs early, and it must not be raised carelessly (large values on some interfaces can damage the pads if held for a long time).</p>
       <table>
         <tr><th>Bits</th><th>Field</th><th>Interface</th></tr>
         <tr><td>2:0</td><td><code>AI_STR</code></td><td>Audio</td></tr>
@@ -561,59 +436,83 @@
         <tr><td>23:21</td><td><code>VI_STR</code></td><td>Video</td></tr>
         <tr><td>26:24</td><td><code>SD_STR</code></td><td>Security / decode</td></tr>
       </table>
-
+      <p>The 3-bit value selects the pad drive <strong>current</strong>:</p>
+      <table>
+        <tr><th>Value</th><th>Drive current</th></tr>
+        <tr><td><code>000</code></td><td>power down</td></tr>
+        <tr><td><code>001</code></td><td>4 mA</td></tr>
+        <tr><td><code>010</code></td><td>8 mA</td></tr>
+        <tr><td><code>011</code></td><td>12 mA</td></tr>
+        <tr><td><code>100</code></td><td>12 mA</td></tr>
+        <tr><td><code>101</code></td><td>16 mA</td></tr>
+        <tr><td><code>110</code></td><td>20 mA</td></tr>
+        <tr><td><code>111</code></td><td>24 mA</td></tr>
+      </table>
+      <p>The reset value is <code>2</code> (<code>010</code>) = <strong>8 mA</strong> for every interface. That is the value the boot firmware keeps, and it must not be raised carelessly (large values on some interfaces can damage the pads if held for a long time). The recommended (and boot-code) setting per interface is:</p>
+      <table>
+        <tr><th>Interface</th><th>Recommended drive</th></tr>
+        <tr><td>SDRAM, EXI0–2, SI, AI, VI</td><td>8 mA</td></tr>
+        <tr><td>Disc (DI), audio streaming (AIS)</td><td>16 mA</td></tr>
+      </table>
       <h3>9.13 <code>CPUDBB</code> (0x34, 32-bit)</h3>
-      <p>CPU dead-bus-cycle / bus-timing control. Bit 0 = <code>DBB</code>. Reset <code>0</code>. It
-        selects whether the CPU-side transfer acknowledge follows the normal 60x protocol
-        (<code>DBB = 0</code>) or omits the dead-bus (turnaround) cycle (<code>DBB = 1</code>). It is
-        generally left <code>0</code> and is only used by low-level Flipper bring-up.</p>
-
+      <p>CPU dead-bus-cycle / bus-timing control. Bit 0 = <code>DBB</code>. Reset <code>0</code>. It selects whether the CPU-side transfer acknowledge follows the normal 60x protocol (<code>DBB = 0</code>) or omits the dead-bus (turnaround) cycle (<code>DBB = 1</code>). It is generally left <code>0</code> and is only used by low-level Flipper bring-up.</p>
       <h2>10. Emulator notes</h2>
       <ol>
-        <li><strong>Register width.</strong> Model every Flipper register as a 16-bit-scoped register
-          accessed as two halves for a 32-bit access. Keep the big-endian high-word-first ordering for the
-          split, and reject (raise the PI error) any non-2/4-byte access to the register space.</li>
-        <li><strong>Interrupt line.</strong> Maintain a <code>INT</code> output = active-low OR of
-          <code>(INTSR &amp; INTMSK)</code>. Do not model per-block interrupt sources inside PI; PI only
-          collects the OR result of each block.</li>
-        <li><strong>PI errors.</strong> On an illegal transaction, latch the address in <code>PIEAR</code>,
-          the code in <code>PIESR</code>, set <code>PIINT</code>, and block further captures until
-          <code>PIINT</code> is cleared. Do not drive a bus-error/abort to the CPU; the transaction simply
-          stalls and never completes.</li>
-        <li><strong>Memory path.</strong> Model main-memory reads/writes as 32-byte bursts regardless of the
-          declared size (the write buffer bursts them). A sub-line read returns the critical double-word
-          first.</li>
-        <li><strong>Prefetch.</strong> Can be modelled as a no-op for correctness; optionally, serve a 32-byte
-          line from a prefetch buffer when software issues a prefetch hint and then reads the same line.</li>
-        <li><strong>sync / eieio.</strong> Implement as a barrier: flush pending writes, then wait until no
-          transaction, read or prefetch is outstanding and all modules are idle. This is what software
-          relies on before starting a DMA that reads freshly written data.</li>
-        <li><strong>CP FIFO.</strong> Track the write pointer <code>CPWRT</code> across each 32-byte burst
-          write to <code>0x0C00_8000</code>, wrapping at <code>CPTOP</code> to <code>CPBAS</code> and setting
-          <code>WRAP</code>. Writes advance the pointer by 32; the command processor consumes the stream from
-          memory.</li>
-        <li><strong>Resets.</strong> <code>CONFIG[0]=0</code> starts a <code>DURAR</code>-length system reset
-          that also resets MEM and DI. Power-on drives <code>CPU_RstB</code>/<code>Flipper_RstB</code> low
-          and the CPU boots at <code>0xFFF0_0100</code>. Model the reset-switch as an <code>RSWINT</code>
-          interrupt, not a hardware reset.</li>
+        <li><strong>Register width.</strong> Model every Flipper register as a 16-bit-scoped register</li>
       </ol>
-
+      <p>accessed as two halves for a 32-bit access. Keep the big-endian high-word-first ordering for the split, and reject (raise the PI error) any non-2/4-byte access to the register space.</p>
+      <ol>
+        <li><strong>Interrupt line.</strong> Maintain a <code>INT</code> output = active-low OR of</li>
+      </ol>
+      <p><code>(INTSR &amp; INTMSK)</code>. Do not model per-block interrupt sources inside PI; PI only collects the OR result of each block.</p>
+      <ol>
+        <li><strong>PI errors.</strong> On an illegal transaction, latch the address in <code>PIEAR</code>, the code</li>
+      </ol>
+      <p>in <code>PIESR</code>, set <code>PIINT</code>, and block further captures until <code>PIINT</code> is cleared. Do not drive a bus-error/abort to the CPU; the transaction simply stalls and never completes.</p>
+      <ol>
+        <li><strong>Memory path.</strong> Model main-memory reads/writes as 32-byte bursts regardless of</li>
+      </ol>
+      <p>the declared size (the write buffer bursts them). A sub-line read returns the critical double-word first.</p>
+      <ol>
+        <li><strong>Prefetch.</strong> Can be modelled as a no-op for correctness; optionally, serve a</li>
+      </ol>
+      <p>32-byte line from a prefetch buffer when software issues a prefetch hint and then reads the same line.</p>
+      <ol>
+        <li><strong>sync / eieio.</strong> Implement as a barrier: flush pending writes, then wait until</li>
+      </ol>
+      <p>no transaction, read or prefetch is outstanding and all modules are idle. This is what the software relies on before starting a DMA that reads freshly written data.</p>
+      <ol>
+        <li><strong>CP FIFO.</strong> Track the write pointer <code>CPWRT</code> across each 32-byte burst write to</li>
+      </ol>
+      <p><code>0x0C00_8000</code>, wrapping at <code>CPTOP</code> to <code>CPBAS</code> and setting <code>WRAP</code>. Writes advance the pointer by 32; the command processor consumes the stream from memory.</p>
+      <ol>
+        <li><strong>Resets.</strong> <code>CONFIG[0]=0</code> starts a <code>DURAR</code>-length system reset that also resets</li>
+      </ol>
+      <p>MEM and DI. Power-on drives <code>CPU_RstB</code>/<code>Flipper_RstB</code> low and the CPU boots at <code>0xFFF0_0100</code>. Model the reset-switch as an <code>RSWINT</code> interrupt, not a hardware reset.</p>
       <h2>11. References</h2>
       <ul>
         <li><code>HW/IO/ProcessorInterface.md</code> — the Gekko–Flipper bus and PI register summary.</li>
         <li><code>HW/IO/PI_001.png</code> — the Gekko–Flipper interface diagram.</li>
         <li><code>HW/IO/mi.txt</code> — MI/PI memory-map and protection notes.</li>
         <li><code>HW/Flipper_ASIC_Block_Diagram.png</code> — the PI block within Flipper.</li>
-        <li>The Gekko (PowerPC 750-derivative) 60x bus signals, and the Gekko User's Manual for the reset
-          vector and transfer encodings.</li>
-        <li>US Patent 6,609,977 (external interfaces) — the CPU–Flipper interface, register and reset model.</li>
+        <li>The Gekko (PowerPC 750-derivative) 60x bus signals, and the Gekko User's Manual</li>
       </ul>
+      <p>for the reset vector and transfer encodings.</p>
+      <ul>
+        <li><strong>US Patent 6,609,977</strong> (external interfaces) — the CPU–Flipper interface,</li>
+      </ul>
+      <p>register and reset model.</p>
+      <ul>
+        <li>The Flipper chip RTL sources are the authority for the PI sub-block structure,</li>
+      </ul>
+      <p>the register-level behaviour and the error/interrupt logic; all facts above are summarised from them.</p>
     </article>
   </main>
 
   <footer class="app-footer">
-    <p>GameCube Hardware Specifications · sources: <code>specs/</code>,
-       <code>HW/</code>, <code>RE/</code>, <code>WEB/</code>.</p>
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
   </footer>
   <script src="assets/js/main.js"></script>
 </body>

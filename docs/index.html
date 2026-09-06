@@ -27,10 +27,14 @@
       <a href="gekko.html">Gekko</a>
       <a href="flipper.html">Flipper</a>
       <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html">Audio Interface</a>
       <a href="memory-interface.html">Memory Interface</a>
       <a href="processor-interface.html">Processor Interface</a>
       <a href="disk-drive.html">Disc Drive</a>
+      <a href="disk-interface.html">Disc Interface (DI)</a>
       <a href="peripherals.html">Peripherals</a>
+      <a href="serial-interface.html">Serial Interface (SI)</a>
+      <a href="expansion-interface.html">Expansion Interface (EXI)</a>
     </nav>
     <div class="theme-toggle">
       <span id="theme-label">Theme</span>
@@ -85,6 +89,12 @@
         <p>The scan-out engine that reads the external framebuffer, generates NTSC/PAL
            timing, and scales horizontally — the register map and emulator model.</p>
       </a>
+      <a class="card" href="audio-interface.html">
+        <span class="card-icon" data-glyph="♪"></span>
+        <h3>Audio Interface</h3>
+        <p>The Flipper audio block: DSP 32/48&nbsp;kHz paths, the sample-rate converter
+           and mixer to the DAC, the DVD-audio stream, and the AI/audio-DMA interrupts.</p>
+      </a>
       <a class="card" href="memory-interface.html">
         <span class="card-icon" data-glyph="⇄"></span>
         <h3>Memory Interface</h3>
@@ -103,11 +113,29 @@
         <p>The intelligent Matsushita 3" mini-DVD drive: media, copy protection,
            DI interface, signals and streamed DVD audio.</p>
       </a>
+      <a class="card" href="disk-interface.html">
+        <span class="card-icon" data-glyph="⌿"></span>
+        <h3>Disc Interface (DI)</h3>
+        <p>The Flipper drive-command block: the 12-byte command packet, immediate
+           versus DMA mode, the 32-byte-block DMA engine and the break/error protocol.</p>
+      </a>
       <a class="card" href="peripherals.html">
         <span class="card-icon" data-glyph="⌁"></span>
         <h3>Peripherals (EXI &amp; SI)</h3>
         <p>The Expansion Interface and Serial Interface: channels, transfers,
            controllers, memory cards, broadband &amp; modem, and the controller protocol.</p>
+      </a>
+      <a class="card" href="serial-interface.html">
+        <span class="card-icon" data-glyph="⌁"></span>
+        <h3>Serial Interface (SI)</h3>
+        <p>The four controller ports: command/response packets, the double-buffered
+           OUT/IN buffers, polling (SIPOLL), communication transfers and the SISR errors.</p>
+      </a>
+      <a class="card" href="expansion-interface.html">
+        <span class="card-icon" data-glyph="⌁"></span>
+        <h3>Expansion Interface (EXI)</h3>
+        <p>The three expansion channels and chip-selects, immediate/DMA/ROM transfers,
+           the EXI clock rates, and the EXI0 boot-ROM descrambler.</p>
       </a>
     </section>
 

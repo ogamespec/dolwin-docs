@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameCube Hardware — Audio Interface (AI)</title>
+  <meta name="description" content="GameCube Audio Interface (AI): the Flipper audio block — the DSP 32/48 kHz paths, the sample-rate converter and mixer to the stereo DAC, the DVD-audio streaming input, AICR/AIVR/AISCNT/AIIT, and the AIINT/AIDINT interrupts. Emulator model." />
+  <script>(function(){try{var K="gc-docs-theme",q,s,d;try{q=new URLSearchParams(location.search).get("theme")}catch(e){}try{s=localStorage.getItem(K)}catch(e){}if(q==="light"||q==="dark"){d=q}else if(s==="light"||s==="dark"){d=s}else{d=(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light"}document.documentElement.setAttribute("data-theme",d)}catch(e){document.documentElement.setAttribute("data-theme","light")}})();</script>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="icon" href="assets/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="assets/cube.svg" />
+  <link rel="apple-touch-icon" href="assets/icon-512.png" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="index.html"><span class="cube"></span>
+      <span class="brand-text"><span>GameCube Specs</span><small>Nintendo&nbsp;·&nbsp;HW2&nbsp;·&nbsp;Dolphin</small></span>
+    </a>
+    <nav class="app-nav">
+      <a href="index.html">Overview</a>
+      <a href="motherboard.html">Motherboard</a>
+      <a href="clock-generator.html">Clock</a>
+      <a href="gekko.html">Gekko</a>
+      <a href="flipper.html">Flipper</a>
+      <a href="video-interface.html">Video Interface</a>
+      <a href="audio-interface.html" class="active">Audio Interface</a>
+      <a href="memory-interface.html">Memory Interface</a>
+      <a href="processor-interface.html">Processor Interface</a>
+      <a href="disk-drive.html">Disc Drive</a>
+      <a href="disk-interface.html">Disc Interface (DI)</a>
+      <a href="peripherals.html">Peripherals (EXI & SI)</a>
+      <a href="serial-interface.html">Serial Interface (SI)</a>
+      <a href="expansion-interface.html">Expansion Interface (EXI)</a>
+    </nav>
+    <div class="theme-toggle"><span>Theme</span>
+      <label class="switch"><input type="checkbox" class="theme-switch" aria-label="Toggle dark theme" /><span class="slider"></span></label>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article>
+      <p class="crumb">GameCube Specs / <a href="index.html">Overview</a> / <a href="flipper.html">Flipper</a> / Audio Interface (AI)</p>
+      <h1>GameCube — Audio Interface (AI)</h1>
+      <blockquote><strong>AI</strong> (the Audio Interface) is the block inside the <strong>Flipper</strong> ASIC that sits between the audio DSP, the disc-drive auxiliary/streaming audio path and the external stereo audio DAC. It owns the programmer-visible <strong>streaming audio-control registers</strong> at <code>0x0C006C00</code>, converts the streamed audio and the DSP output into a single 16-bit stereo sample stream, and serialises that stream out to the DAC. The main-memory-to-FIFO <strong>audio DMA</strong> that actually feeds the AI is a separate controller in the DSP/audio register space — it is controlled from the <code>0x0C005030</code>-area registers and is described here only to keep the two sides of the audio path distinct.</blockquote>
+      <p>This is the register-level, emulator-focused specification. The facts are drawn from the repository's hardware documentation, the Flipper RTL and the system-library reverse-engineering notes, and are summarised (paraphrased) rather than reproduced verbatim. Where a behaviour is only implicit in the RTL — a self-clearing pulse, the exact effect of a mode flag, the width of a counter — it is called out as such.</p>
+      <h2>1. Overview</h2>
+      <p>The AI is the output stage of the console's audio path. It brings together three inputs:</p>
+      <ul>
+        <li>the <strong>DSP</strong> left/right sample stream (<code>dsp_ioL</code> / <code>dsp_ioR</code>),</li>
+        <li>the <strong>DVD / auxiliary streaming</strong> serial input from the disc drive</li>
+      </ul>
+      <p>(<code>aisd</code> / <code>aisclk</code> / <code>aislr</code>),</p>
+      <ul>
+        <li>and a programmable <strong>volume</strong> for the streaming channel (<code>AIVR</code>).</li>
+      </ul>
+      <p>and produces one 16-bit stereo sample stream that is shifted out to the stereo DAC on <code>aid</code> / <code>ailr</code> / <code>aiclk</code>. To do this it runs the streaming input through a sample-rate converter (so the stream is always 48 kHz at the mixer), scales it by the volume registers, <strong>adds</strong> the DSP output, saturates the sum, and serialises the result.</p>
+      <p>The AI register block is reached through the <strong>IO-module</strong> interface of the Processor Interface: it is IO module <code>io_addr_ai</code> (selected by <code>PiAddr[11:10] == 3</code>), so its registers sit at physical base <strong><code>0x0C006C00</code></strong> (uncached alias <code>0xCC006C00</code>). The register decode inside the AI uses <code>PiAddr[4:2]</code>; each register is 32-bit internally, at byte offsets <code>index*4</code>.</p>
+      <h3>1.1 Sub-blocks</h3>
+      <table>
+        <tr><th>Block</th><th>Role</th></tr>
+        <tr><td><code>io_Ai</code></td><td>The main datapath / register interface: register decode mux, the 48 kHz DSP path, the streaming-input deserialiser, the DAC serial shifters, and the interrupt generation</td></tr>
+        <tr><td><code>io_Ai_dsp32</code></td><td>The parallel 32 kHz DSP path (a second, narrower SRC/mixer datapath used when <code>AICR.DFR</code> selects 32 kHz DSP audio)</td></tr>
+        <tr><td><code>io_AiSRC</code> + <code>io_AiSRC_fsm</code></td><td>The sample-rate converter — a 128-tap FIR resampler fed from a small sample RAM; also performs the volume multiply and the DSP add</td></tr>
+        <tr><td><code>io_AiMem</code></td><td>The streaming sample RAM (96×16, one read/one write port) and the L/R pointer logic that feeds the SRC</td></tr>
+        <tr><td><code>io_Ai_fsm</code> / <code>io_Ai_fsm_dsp32</code></td><td>The top-level mixing/datapath sequencer (start-up delay, SRC, volume, DSP add)</td></tr>
+        <tr><td><code>io_AiClks</code></td><td>The clock/shape generators for the DAC bit-clock (<code>aiclk</code>) and the streaming bit-clock (<code>aisclk</code>), including the 32↔48 kHz stream clock muxes</td></tr>
+        <tr><td><code>io_AiCSR</code></td><td>The control/status register file (AICR, AIVR, AISCNT, AIIT) and the sample-counter / interrupt match logic</td></tr>
+        <tr><td><code>io_AiAdd16x16</code></td><td>The 16×16 adder that sums the two SRC results and the saturation (clamp) logic in <code>io_Ai_top</code></td></tr>
+      </table>
+      <p>The two DSP paths (<code>io_Ai</code> for 48 kHz DSP audio and <code>io_Ai_dsp32</code> for 32 kHz DSP audio) each produce a 16-bit result; <code>io_Ai_top</code> sums them and clamps the result before it reaches the DAC serialiser.</p>
+      <h2>2. External pins / signals</h2>
+      <p>The AI has two serial interfaces and a mode flag on the chip boundary. All serial data is 16-bit, left-justified, most-significant-bit first.</p>
+      <h3>2.1 DAC output (AI → external DAC)</h3>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>aid</code></td><td>1</td><td>out</td><td>Serial audio data to the DAC — the 16-bit L or R sample, MSB first, one bit per <code>aiclk</code></td></tr>
+        <tr><td><code>ailr</code></td><td>1</td><td>out</td><td>Left/right frame — toggles once per stereo sample at the <strong>48 kHz</strong> output rate; an edge is also the sample-conversion strobe to the DAC</td></tr>
+        <tr><td><code>aiclk</code></td><td>1</td><td>out</td><td>Bit clock for <code>aid</code></td></tr>
+      </table>
+      <p><code>aid</code> is the MSB of the current L or R shift register, selected by the <code>ailr</code> level. The output stream is always at the 48 kHz sample rate (the DAC clock is derived from the fixed video clock), regardless of the input sample rate.</p>
+      <h3>2.2 Streaming input (disc drive → AI)</h3>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>aisd</code></td><td>1</td><td>in</td><td>Serial audio data from the disc drive — the 16-bit L or R sample, MSB first, one bit per <code>aisclk</code></td></tr>
+        <tr><td><code>aislr</code></td><td>1</td><td>out</td><td>Left/right frame for the stream — toggles at the <strong>stream</strong> sample rate (32 or 48 kHz)</td></tr>
+        <tr><td><code>aisclk</code></td><td>1</td><td>out</td><td>Bit clock for <code>aisd</code> (the AI drives it to the disc)</td></tr>
+      </table>
+      <p><code>aislr</code> is what <strong>gates</strong> the flow of stream data: while <code>AICR.PSTAT</code> is set the frame keeps toggling and the disc keeps sending; when it stops, the disc treats the stream as paused and sends zeros, and only begins again after it receives a high-low-high sequence (see §4).</p>
+      <h3>2.3 DSP and mode signals</h3>
+      <table>
+        <tr><th>Signal</th><th>Width</th><th>Dir</th><th>Description</th></tr>
+        <tr><td><code>dsp_ioL</code> / <code>dsp_ioR</code></td><td>16 each</td><td>in</td><td>The DSP's left / right output samples</td></tr>
+        <tr><td><code>io_dspPop</code></td><td>1</td><td>out</td><td>Strobes the DSP to present a new L/R sample (one io-clock pulse)</td></tr>
+        <tr><td><code>dvdaudio_mode</code></td><td>1</td><td>out</td><td>DVD-audio mode flag, taken from <code>AIIT[31]</code> (see §8.4)</td></tr>
+      </table>
+      <p><code>io_dspPop</code> is asserted briefly whenever the AI consumes a new DSP sample, and is used by the DSP to advance its output. <code>dvdaudio_mode</code> is a programmer-set flag that is surfaced out of the AI; its external effect is described in the repo's hardware docs but is not elaborated further in the AI RTL itself (noted below).</p>
+      <h2>3. Audio path and sampling</h2>
+      <p>The AI must present a single 48 kHz stereo stream to the DAC no matter what the input rate is. The pipeline is:</p>
+      <pre><code>stream in (32/48 kHz) ─▶ deserialise L/R ─▶ sample RAM ─▶ SRC/FIR (→48 kHz) ─▶ volume (×AVR) ─┐
+                                                                                              ├─▶ add ─▶ clamp ─▶ L/R shift ─▶ aid/ailr/aiclk
+DSP L/R (32/48 kHz) ─────────────────────────────────────────▶ (dsp32 path SRC if 32 kHz) ──┘</code></pre>
+      <h3>3.1 DSP sample-rate mode (<code>AICR.DFR</code>)</h3>
+      <p>The DSP normally runs at <strong>48 kHz</strong>, but it can run at <strong>32 kHz</strong> (controlled by <code>AICR.DFR</code>, the <code>dsp32</code> field — see §8.1 for the name reconciliation). Two parallel datapaths exist:</p>
+      <ul>
+        <li>The <strong>48 kHz DSP path</strong> (<code>io_Ai</code>, the main <code>io_Ai</code>) mixes the directly-presented</li>
+      </ul>
+      <p>DSP L/R into the stream (already at the DAC rate).</p>
+      <ul>
+        <li>The <strong>32 kHz DSP path</strong> (<code>io_Ai_dsp32</code>) is a narrower copy of the SRC/mixer that</li>
+      </ul>
+      <p>resamples a 32 kHz DSP stream up to 48 kHz before mixing.</p>
+      <p>Only one path actually carries the DSP audio at a time: the top level muxes the DSP L/R input to one path (feeding zeros to the other) based on a registered version of <code>AICR.DFR</code>. The two results are then added (§3.3).</p>
+      <h3>3.2 The sample-rate converter (SRC)</h3>
+      <p>When the streaming input is at <strong>32 kHz</strong> (<code>AICR.AFR = 0</code>), the SRC resamples it to 48 kHz. It does so with a <strong>128-tap FIR</strong> filter (the filter is symmetric, so only 64 coefficients are stored) operating over a 3:2 (48/32) polyphase relationship: for every two input samples it produces three output samples, and the FSM cycles a 3-phase <code>period</code> counter accordingly. Each channel is buffered in a small sample RAM (96 × 16); the SRC reads a window of 43 samples (the value <code>K</code> in the RTL) per channel and interpolates.</p>
+      <p>When the stream is already at <strong>48 kHz</strong> (<code>AICR.AFR = 1</code>), the stream still passes through the mixing datapath but the conversion reduces to a bypass — the stream samples are scaled and added directly without FIR interpolation.</p>
+      <p>The first ~68 output frames after play starts are intentionally suppressed: the SRC needs a full history of stream samples before it can produce a valid output, so the first samples out of the DAC are zeroed (the "start-up" counter in the FSM). This is an implementation detail an emulator can reproduce or skip.</p>
+      <h3>3.3 Volume, mixing and clamping</h3>
+      <p>The streamed samples are scaled by the auxiliary volume registers (<code>AIVR.AVRL</code> for the left channel, <code>AIVR.AVRR</code> for the right). Volume is an 8-bit value; <code>0x00</code> mute, <code>0xFF</code> full scale. The SRC builds the 16-bit multiplier for the volume stage from the byte, effectively scaling the sample by <code>volume/256</code>.</p>
+      <p>The scaled stream sample is then <strong>added</strong> to the DSP sample for the same side (left with left, right with right). The two SRC datapath results (the 48 k path and the 32 k path) are summed by a 16×16 adder, and the result is <strong>clamped</strong>: on overflow it saturates to <code>0x7FFF</code> (positive), on underflow to <code>0x8000</code> (negative). This is the saturation in <code>io_Ai_top</code>. One of the two addends is zero in normal operation (because the DSP audio is muxed to only one path), so the mixer is effectively the stream plus the DSP, but the clamp always applies to the final 16-bit sum.</p>
+      <h3>3.4 DAC serial output</h3>
+      <p>The 16-bit L and R results are loaded into two shift registers and clocked out, MSB first, on <code>aiclk</code>; <code>ailr</code> selects which shift register is currently driving <code>aid</code>. <code>ailr</code> toggles once per stereo frame at 48 kHz. Data is loaded on the negative edge of <code>aiclk</code>, so the serial stream is continuous.</p>
+      <h2>4. Streaming audio input</h2>
+      <p>The auxiliary/streaming input is the DVD-audio path: a serial PCM bitstream from the optical drive, clocked by the AI (the AI is the clock master for this interface).</p>
+      <ul>
+        <li><strong>Deserialisation.</strong> <code>aisd</code> is shifted into a 16-bit register one bit per</li>
+      </ul>
+      <p><code>aisclk</code> positive edge; <code>aislr</code> (delayed) selects left or right. Completed L and R samples are written into the sample RAM.</p>
+      <ul>
+        <li><strong>Sample rate.</strong> The stream is either <strong>32 kHz</strong> or <strong>48 kHz</strong> as selected by</li>
+      </ul>
+      <p><code>AICR.AFR</code> (§8.1). At 32 kHz it is resampled to 48 kHz by the SRC; at 48 kHz it passes through.</p>
+      <ul>
+        <li><strong>Start / pause gate (<code>AICR.PSTAT</code>).</strong> <code>AICR.PSTAT</code> is the play status. When it</li>
+      </ul>
+      <p>is set the streaming bit-clock and the <code>aislr</code> frame are enabled; the disc keeps sending samples. When cleared, the frame stops toggling, the disc treats the stream as paused and sends zeros, and it only resumes after a high-low-high <code>aislr</code> sequence. So the streaming interface is effectively enabled/disabled by <code>PSTAT</code>, not by a separate clock-enable register.</p>
+      <ul>
+        <li><strong>Mixing.</strong> The deserialised, resampled stream is multiplied by <code>AIVR</code>, added to</li>
+      </ul>
+      <p>the DSP output, clamped, and sent to the DAC (§3).</p>
+      <p>The streaming input is also what drives the <strong>sample counter</strong> used for the streaming interrupt: each stereo frame produced by the streamed path (post-SRC, at 48 kHz) increments <code>AISCNT</code> while <code>PSTAT</code> is set (§8.3, §9).</p>
+      <h2>5. Interrupts</h2>
+      <p>The AI contributes <strong>two distinct</strong> interrupts to the host, and it is worth separating them because they come from different places.</p>
+      <h3>5.1 Streaming sample-counter interrupt (AIINT)</h3>
+      <p>This is the interrupt the AI itself generates. It is raised when the streamed sample counter (<code>AISCNT</code>) reaches the programmable trigger in <code>AIIT</code>:</p>
+      <pre><code>AIINT is set when  (AISCNT == AIIT)  AND  AICR.AIINTVLD == 0  AND  AISCNT != 0</code></pre>
+      <ul>
+        <li><code>AIIT</code> holds the target stereo-sample count (bits 30:0).</li>
+        <li><code>AISCNT</code> counts streamed stereo frames (bits 30:0). It must be non-zero (so the</li>
+      </ul>
+      <p>very first sample does not fire the interrupt immediately).</p>
+      <ul>
+        <li><code>AICR.AIINTVLD</code> (interrupt valid) gates the match: when it is set the interrupt</li>
+      </ul>
+      <p><strong>holds its last value</strong> and the match is ignored; when clear the match affects <code>AIINT</code>.</p>
+      <p>The match produces a single-cycle pulse that <strong>sets</strong> <code>AICR.AIINT</code>. The pending <code>AIINT</code> bit is then gated by <code>AICR.AIINTMSK</code> to produce the AI's request line <code>ai_piInt</code>, which the Processor Interface carries into the PI cause register as <strong><code>AIINT</code> (INTSR bit 5 / AIMSK)</strong>.</p>
+      <ul>
+        <li><code>AICR.AIINT</code> is the interrupt <strong>status</strong> — read to query, and **write-1 to</li>
+      </ul>
+      <p>clear** (the standard PowerPC convention). It asserts regardless of <code>AICR.AIINTMSK</code> (i.e. even if the request to the CPU is masked, the status bit still latches); the mask only controls whether the request is reported.</p>
+      <ul>
+        <li><code>AICR.AIINTMSK</code> enables the request to the CPU (<code>ai_piInt</code>) when set.</li>
+      </ul>
+      <p>At the PI level <code>AIINT</code> is one source among many; the OS reads <code>INTSR</code> and, on <code>AIINT</code>, reads <code>AISCNT</code>/<code>AIIT</code> and clears <code>AICR.AIINT</code>.</p>
+      <h3>5.2 Audio-DMA interrupt (AIDINT)</h3>
+      <p>The main-memory→FIFO <strong>audio DMA</strong> lives in the DSP/audio register space, not in the AI IO block. Its controller is configured with <code>AID_MADRH</code>/<code>AID_MADRL</code>/ <code>AID_LEN</code>/<code>AID_CNT</code> at <code>0x0C005030</code>–<code>0x0C00503A</code> (see §7 and §9). When its byte counter (<code>AID_CNT</code>) reaches zero it raises the <strong>AIDINT</strong> interrupt, and if the auto-restart bit in <code>AID_LEN</code> is set the DMA reloads its start address and length and re-runs.</p>
+      <p>AIDINT is <strong>not</strong> the AI's <code>ai_piInt</code>; it originates in the audio subsystem's DMA controller and is reported separately (through the DSP/audio block's interrupt handling). Emulators must model them as two independent sources.</p>
+      <h2>6. Register access</h2>
+      <p>All AI registers are reached through the <strong>16-bit</strong> IO register interface, exactly as every other Flipper register block:</p>
+      <ul>
+        <li><code>PiData[15:0]</code> carries data; <code>PiAddr[19:1]</code> is a halfword-granular address.</li>
+        <li>Only <strong>2-byte</strong> and <strong>4-byte</strong> accesses are valid; any other size (or a burst,</li>
+      </ul>
+      <p>or a byte) to the register space is a Processor-Interface error (see <a href="processor-interface.html">processor-interface.md</a> §2.3).</p>
+      <ul>
+        <li>A <strong>32-bit</strong> access is split by PI into two back-to-back 16-bit transfers,</li>
+      </ul>
+      <p><strong>big-endian</strong>: the <strong>high</strong> word at byte offset <code>N</code>, the <strong>low</strong> word at <code>N+2</code>.</p>
+      <ul>
+        <li>Each AI register is <strong>32-bit</strong> internally. The AI's own read mux hands each</li>
+      </ul>
+      <p>halfword back to PI depending on <code>PiAddr[1]</code>: the low-address halfword is the high 16 bits of the register, the high-address halfword is the low 16 bits.</p>
+      <p>Within the AI, <code>PiAddr[4:2]</code> selects the register (index = byte offset ÷ 4) and <code>PiAddr[1]</code> selects the halfword. AICR, AIVR, AISCNT and AIIT are at indexes 0–3.</p>
+      <h2>7. Register map</h2>
+      <p>The AI occupies <code>0x0C006C00</code>–<code>0x0C006C0E</code> (uncached alias <code>0xCC006C00</code>). Bytes are offsets from <code>0x0C006C00</code>.</p>
+      <table>
+        <tr><th>Addr</th><th>Name</th><th>R/W</th><th>Description</th></tr>
+        <tr><td><code>0x00</code></td><td><code>AICR</code></td><td>R/W</td><td>AI Control Register — play status, rates, interrupt status/mask, sample-counter reset, DSP rate</td></tr>
+        <tr><td><code>0x04</code></td><td><code>AIVR</code></td><td>R/W</td><td>AI Volume Register — left (<code>AVRL</code>) and right (<code>AVRR</code>) stream volume</td></tr>
+        <tr><td><code>0x08</code></td><td><code>AISCNT</code></td><td>RO</td><td>AI Streaming Sample Counter (stereo frame count)</td></tr>
+        <tr><td><code>0x0C</code></td><td><code>AIIT</code></td><td>R/W</td><td>AI Interrupt Timing — the stereo-count trigger; bit 31 is <code>DVDAUDIO</code></td></tr>
+      </table>
+      <p>The <strong>audio DMA</strong> registers that feed the AI FIFO are <em>not</em> part of this block. They live in the DSP/audio register space and are listed here only to distinguish the two faces of the audio system:</p>
+      <table>
+        <tr><th>Addr</th><th>Name</th><th>R/W</th><th>Description</th></tr>
+        <tr><td><code>0x0C005030</code></td><td><code>AID_MADRH</code></td><td>R/W</td><td>DMA start address, bits 31:16</td></tr>
+        <tr><td><code>0x0C005032</code></td><td><code>AID_MADRL</code></td><td>R/W</td><td>DMA start address, bits 15:0 (32-byte aligned)</td></tr>
+        <tr><td><code>0x0C005036</code></td><td><code>AID_LEN</code></td><td>R/W</td><td>Bit 15 = DMA enable/restart; bits 14:0 = length in 32-byte blocks</td></tr>
+        <tr><td><code>0x0C00503A</code></td><td><code>AID_CNT</code></td><td>RO</td><td>Counts down to zero — number of 32-byte blocks remaining</td></tr>
+      </table>
+      <p>Note: the DMA FIFO is 32 bytes (one block); the FIFO drains at 32 or 48 kHz stereo depending on <code>AISetDSPSampleRate</code>. The four registers above are the documented programmer-visible controls; the controllers also track a current-DMA-address internally, but its exact location has not been pinned down and is not part of the AI IO block.</p>
+      <h2>8. Register fields</h2>
+      <p>Bit positions below follow the LSB-first field order used by the register macros (and match the reverse-engineering header in <code>RE/AI/ai.txt</code>). Where the hardware documentation uses a different mnemonic for a field, both names are given.</p>
+      <h3>8.1 <code>AICR</code> (0x00, 32-bit)</h3>
+      <p>Reset value <code>0x0000_0000</code>. The fields occupy the low 7 bits; bits 31:7 read as 0.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>0</td><td><code>PSTAT</code></td><td>R/W</td><td>0</td><td>Play status. <code>1</code> enables the streaming <code>aislr</code> clock / starts playback; <code>0</code> stops or pauses the stream (the disc then sends zeros). Also enables the counter increment.</td></tr>
+        <tr><td>1</td><td><code>AFR</code></td><td>R/W</td><td>0</td><td>Streaming (auxiliary) sample rate. <code>0</code> = 32 kHz, <code>1</code> = 48 kHz. The SRC converts a 32 kHz stream to 48 kHz. Should only be changed while <code>PSTAT</code> = 0.</td></tr>
+        <tr><td>2</td><td><code>AIINTMSK</code></td><td>R/W</td><td>0</td><td>Streaming-interrupt mask. <code>0</code> = masked, <code>1</code> = enabled (drives <code>ai_piInt</code>).</td></tr>
+        <tr><td>3</td><td><code>AIINT</code></td><td>R/WC</td><td>0</td><td>Streaming-interrupt status. Read: <code>0</code> no request, <code>1</code> request. <strong>Write 1 to clear.</strong> Asserts regardless of <code>AIINTMSK</code>.</td></tr>
+        <tr><td>4</td><td><code>AIINTVLD</code></td><td>R/W</td><td>0</td><td>Interrupt valid / hold. <code>0</code> = <code>AISCNT==AIIT</code> match affects <code>AIINT</code>; <code>1</code> = <code>AIINT</code> holds its last value (match ignored).</td></tr>
+        <tr><td>5</td><td><code>SCRESET</code></td><td>W (self-clearing)</td><td>0</td><td>Sample-counter reset. Write <code>1</code> to clear <code>AISCNT</code> to 0. Reads as 0.</td></tr>
+        <tr><td>6</td><td><code>DFR</code> / <code>dsp32</code></td><td>R/W</td><td>0</td><td>DSP sample-rate mode. <code>0</code> = 48 kHz DSP, <code>1</code> = 32 kHz DSP. Selects which DSP path is used (§8.1 note).</td></tr>
+        <tr><td>31:7</td><td>—</td><td>RO</td><td>0</td><td>Reserved</td></tr>
+      </table>
+      <blockquote><strong>Field-name reconciliation — bit 6.</strong> The hardware documentation calls this field <strong><code>DFR</code></strong> ("AI DMA sample rate", "different from AFR"), and the register macro (<code>RE/AI/ai.txt</code>, <code>AICR_DFR_SHFT = 6</code>) and the RTL name it <strong><code>dsp32</code></strong> (<code>AI_CR_DSP32</code>). They are the same field, at bit 6. Its meaning is the <strong>DSP</strong> sample-rate mode (32 vs 48 kHz), which is the rate the DSP audio is produced at (resampled to 48 kHz at the mixer if 32 kHz). This is deliberately distinct from <code>AFR</code> (bit 1), which is the <strong>streaming/auxiliary</strong> input sample rate. The <code>DFR</code>/<code>dsp32</code> field is a retail-("HW2"/rev B) addition — it was not present on the original (rev A) part.</blockquote>
+      <h3>8.2 <code>AIVR</code> (0x04, 32-bit)</h3>
+      <p>Reset value <code>0x0000_0000</code> (both channels muted). The two volume bytes occupy bits 15:0; bits 31:16 read as 0.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>7:0</td><td><code>AVRL</code></td><td>R/W</td><td><code>0x00</code></td><td>Left-channel volume for the streaming (auxiliary) channel. <code>0x00</code> = mute, <code>0xFF</code> = maximum.</td></tr>
+        <tr><td>15:8</td><td><code>AVRR</code></td><td>R/W</td><td><code>0x00</code></td><td>Right-channel volume for the streaming (auxiliary) channel. <code>0x00</code> = mute, <code>0xFF</code> = maximum.</td></tr>
+        <tr><td>31:16</td><td>—</td><td>RO</td><td>0</td><td>Reserved</td></tr>
+      </table>
+      <h3>8.3 <code>AISCNT</code> (0x08, 32-bit, read-only)</h3>
+      <p>Reset value <code>0</code>. The counter is effectively <strong>31-bit</strong> (bits 30:0); bit 31 reads as 0.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>30:0</td><td><code>AISCNT</code></td><td>RO</td><td>0</td><td>Stereo-sample counter. Increments once per streamed stereo frame output (post-SRC) while <code>PSTAT</code> is set; cleared by reset or by <code>AICR.SCRESET</code>.</td></tr>
+        <tr><td>31</td><td>—</td><td>RO</td><td>0</td><td>Reserved</td></tr>
+      </table>
+      <blockquote>The counter may be read as two 16-bit halves (<code>AISCNT</code> high halfword = bits 30:16, low halfword = bits 15:0). Since it is only 31 bits, the most-significant bit of the high halfword is always 0. This differs from the hardware documentation which lists all 32 bits as <code>AISCNT</code>; the RTL counter is 31 bits.</blockquote>
+      <h3>8.4 <code>AIIT</code> (0x0C, 32-bit)</h3>
+      <p>Reset value <code>0</code>. Bit 31 is the DVD-audio mode flag.</p>
+      <table>
+        <tr><th>Bits</th><th>Field</th><th>R/W</th><th>Reset</th><th>Description</th></tr>
+        <tr><td>30:0</td><td><code>AIIT</code></td><td>R/W</td><td>0</td><td>Interrupt-timing trigger. The AI raises the streaming interrupt when <code>AISCNT</code> matches this value (subject to <code>AICR.AIINTVLD</code> and <code>AISCNT != 0</code>).</td></tr>
+        <tr><td>31</td><td><code>DVDAUDIO</code></td><td>R/W</td><td>0</td><td>DVD-audio mode flag. Surfaces as the <code>dvdaudio_mode</code> signal.</td></tr>
+      </table>
+      <blockquote><code>AIIT[31]</code> (<code>DVDAUDIO</code>) is written through the high halfword of the register (byte offset <code>0x0C</code>). Its effect outside the AI is described in the hardware docs but is not implemented inside the AI RTL beyond being output as <code>dvdaudio_mode</code>; treat it as a mode flag whose downstream use is specified elsewhere.</blockquote>
+      <h2>9. Emulator notes</h2>
+      <ol>
+        <li><strong>Register width / access.</strong> Model each of <code>AICR</code>, <code>AIVR</code>, <code>AISCNT</code>, <code>AIIT</code> as</li>
+      </ol>
+      <p>a 32-bit register. A 4-byte access is split into a high-address halfword at byte offset <code>N</code> and a low-address halfword at <code>N+2</code> (big-endian, high-word first). Halfword addresses: <code>AICR</code> 0x00/0x02, <code>AIVR</code> 0x04/0x06, <code>AISCNT</code> 0x08/0x0A, <code>AIIT</code> 0x0C/0x0E. Reject byte/burst/unsized access as a PI error. <code>AICR</code> and <code>AIVR</code> only use the low halfword; <code>AISCNT</code> and <code>AIIT</code> span both.</p>
+      <ol>
+        <li><strong>Sample counter.</strong> Keep <code>AISCNT</code> as a 31-bit value in bits 30:0 (bit 31 always</li>
+      </ol>
+      <p>0). Increment it by 1 for every stereo output frame produced while <code>AICR.PSTAT</code> is set (i.e. while streaming is playing). Clear it on reset and on a write of <code>AICR.SCRESET = 1</code> (which reads back 0 — self-clearing).</p>
+      <ol>
+        <li><strong>Interrupt match.</strong> The streaming interrupt is raised when <code>AISCNT</code> (non-zero)</li>
+      </ol>
+      <p>equals <code>AIIT[30:0]</code> <strong>and</strong> <code>AICR.AIINTVLD == 0</code>. When it fires, set <code>AICR.AIINT</code> (a one-cycle pulse). <code>AICR.AIINT</code> is write-1-to-clear. The request line to the CPU is <code>AICR.AIINT AND AICR.AIINTMSK</code> → <code>ai_piInt</code> → PI <code>INTSR</code> bit 5 (<code>AIINT</code>/<code>AIMSK</code>). Note: <code>AIINT</code> still latches even when <code>AIINTMSK</code> is 0; the mask only controls whether it is reported.</p>
+      <ol>
+        <li><strong>Volume.</strong> Scale the streamed sample by <code>AIVR.AVRL</code> (left) / <code>AIVR.AVRR</code></li>
+      </ol>
+      <p>(right). Volume is 8-bit: <code>0x00</code> mute, <code>0xFF</code> full scale. The SRC builds a 16-bit unsigned multiplier from the byte (a 1.15 fraction equal to <code>(VOL &#48;&#48; 7) | 0x7F</code>, i.e. <code>0x7FFF</code> at full scale) and multiplies the sample by it (shifting right by 15). <code>0xFF</code> is therefore ≈ 1.0 full scale, while <code>0x00</code> leaves a small ≈ 1/256 residual rather than exact zero. For most purposes an emulator can multiply by <code>VOL / 256</code> and saturate, or use the exact fixed-point form.</p>
+      <ol>
+        <li><strong>Sample-rate conversion.</strong> If <code>AICR.AFR == 0</code> the stream is 32 kHz and must be</li>
+      </ol>
+      <p>resampled to 48 kHz (a 3:2 polyphase FIR, 128 taps / 64 symmetric coefficients) before it reaches the mixer. If <code>AFR == 1</code> it is already 48 kHz (bypass the resample). An emulator can approximate this with a good-quality interpolator at the same 3:2 ratio, or simply skip the stream for correctness-critical (non-audio) emulation.</p>
+      <ol>
+        <li><strong>DSP sample-rate mode (<code>DFR</code>/<code>dsp32</code>).</strong> If <code>AICR.DFR == 1</code>, the DSP stream is</li>
+      </ol>
+      <p>32 kHz and must be independently resampled to 48 kHz (the second datapath) before the mixer; if <code>0</code> it is already 48 kHz. At the mixer only one DSP path is active depending on this bit.</p>
+      <ol>
+        <li><strong>Mixer and clamping.</strong> Add the scaled streamed sample to the DSP sample for the</li>
+      </ol>
+      <p>same channel, then saturate the 16-bit result to <code>0x7FFF</code> on overflow and <code>0x8000</code> on underflow. Do not allow wrap-around.</p>
+      <ol>
+        <li><strong>DAC serialisation.</strong> Serialise the 16-bit L and R samples out on <code>aid</code>, MSB</li>
+      </ol>
+      <p>first, one bit per <code>aiclk</code>; <code>ailr</code> toggles once per stereo frame at 48 kHz and selects left vs right. The output is always 48 kHz.</p>
+      <ol>
+        <li><strong>Streaming clock gating (<code>PSTAT</code>).</strong> <code>AICR.PSTAT</code> enables the streaming</li>
+      </ol>
+      <p>bit-clock/<code>aislr</code>. When <code>PSTAT</code> is 0 the <code>aislr</code> frame stops, the disc pauses and sends zeros; the disc resumes on a high-low-high <code>aislr</code> sequence. Only start the streaming clock (and increment <code>AISCNT</code>) when <code>PSTAT</code> is 1.</p>
+      <ol>
+        <li><strong><code>dvdaudio_mode</code>.</strong> Expose <code>AIIT[31]</code> as a read/write mode flag. Its effect is</li>
+      </ol>
+      <p>not implemented inside the AI RTL, so model it as a stored flag unless the downstream consumer is also modelled.</p>
+      <ol>
+        <li><strong>AIDINT vs AIINT.</strong> Do not conflate the streaming interrupt (<code>AIINT</code>, from the</li>
+      </ol>
+      <p>AI block, §5.1) with the audio-DMA interrupt (<code>AIDINT</code>, from the DSP/audio DMA controller <code>AID_CNT==0</code>, §5.2). They are independent sources with independent servicing.</p>
+      <h2>10. References</h2>
+      <ul>
+        <li><code>HW/AudioSystem/AudioInterface.md</code> — the AI register/behaviour summary and the</li>
+      </ul>
+      <p>audio DMA registers (<code>AID_MADRH</code>/<code>AID_MADRL</code>/<code>AID_LEN</code>/<code>AID_CNT</code>); the source of the AICR/AIVR/AISCNT/AIIT field descriptions and the external-signal table.</p>
+      <ul>
+        <li><code>HW/AudioSystem/dsp_info.md</code> — the audio subsystem and the distinction between</li>
+      </ul>
+      <p>the DSP/audio DMA interrupts and the AI stream interrupt.</p>
+      <ul>
+        <li><code>RE/AI/ai.txt</code> — the OS AI library register accesses, the <code>AICR</code> bit shifts</li>
+      </ul>
+      <p>(confirming <code>DFR</code> at bit 6) and the DMA register addresses.</p>
+      <ul>
+        <li><code>RE/OS/osaud.md</code> — the OS audio-system initialisation and DSP/audio control</li>
+      </ul>
+      <p>registers, for context on how the AI fits the audio subsystem.</p>
+      <ul>
+        <li><code>specs/architecture/flipper.md</code> §4 — the existing high-level Audio DSP and Audio</li>
+      </ul>
+      <p>Interface description.</p>
+      <ul>
+        <li><code>specs/architecture/processor-interface.md</code> §3–§4 — the 16-bit register-access</li>
+      </ul>
+      <p>model and the PI interrupt aggregation (<code>AIINT</code>/<code>AIMSK</code>, INTSR bit 5).</p>
+      <ul>
+        <li><strong>US Patent 6,609,977</strong> (External interfaces) and <strong>US Patent 7,369,665</strong></li>
+      </ul>
+      <p>(Mixing audio) — the AI register and response behaviour these summaries paraphrase.</p>
+    </article>
+  </main>
+
+  <footer class="app-footer">
+    <p>GameCube Hardware Specifications · documentation sources: <code>specs/</code>,
+       <code>HW/</code>, <code>RE/</code> and <code>WEB/</code>.
+       The cube motif is a stylised reference to the Nintendo GameCube logo.</p>
+  </footer>
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
